@@ -311,7 +311,7 @@ spec:
       masterPassword: %s
 `, derivedSecretName, testNamespace, firstMasterPasswordName)
 			cmd = exec.Command("kubectl", "apply", "-f", "-")
-			cmd.Stdin = exec.Command("echo", derivedSecretYAML).Stdout
+			cmd.Stdin = strings.NewReader(derivedSecretYAML)
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "Failed to create derived secret")
 
