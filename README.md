@@ -167,8 +167,67 @@ the '--force' flag and manually ensure that any custom configuration
 previously added to 'dist/chart/values.yaml' or 'dist/chart/manager/manager.yaml'
 is manually re-applied afterwards.
 
+## Releases
+
+### Snapshots (Testing)
+
+Snapshots are built automatically on every push to main:
+
+**Docker Images:**
+```bash
+# Always latest main branch
+docker pull ghcr.io/oleksiyp/derived-secret-operator:edge
+
+# Specific commit
+docker pull ghcr.io/oleksiyp/derived-secret-operator:sha-abc123
+```
+
+**Helm Charts:**
+```bash
+# Get version from CI logs (e.g., 0.1.0-dev.abc123)
+helm install my-app \
+  oci://ghcr.io/oleksiyp/charts/derived-secret-operator \
+  --version 0.1.0-dev.abc123
+```
+
+### Official Releases
+
+Releases are created manually via GitHub Actions:
+
+1. Go to [GitHub Actions → Release workflow](https://github.com/oleksiyp/derived-secret-operator/actions/workflows/release.yml)
+2. Click "Run workflow"
+3. Enter version number (e.g., `1.0.0`)
+4. Release publishes automatically:
+   - Multi-arch Docker images (amd64 + arm64)
+   - Helm chart
+   - Signed with cosign + SBOM
+   - GitHub Release with:
+     - Automatic summary of merged PRs
+     - Installation instructions
+     - install.yaml attachment
+
+**Version Format:** Use [Semantic Versioning](https://semver.org/)
+- Major (1.0.0 → 2.0.0): Breaking changes
+- Minor (1.0.0 → 1.1.0): New features, backwards compatible
+- Patch (1.0.0 → 1.0.1): Bug fixes
+
+**Installation from release:**
+```bash
+# kubectl
+kubectl apply -f https://github.com/oleksiyp/derived-secret-operator/releases/download/v1.0.0/install.yaml
+
+# Helm
+helm install derived-secret-operator \
+  oci://ghcr.io/oleksiyp/charts/derived-secret-operator \
+  --version 1.0.0
+
+# Docker
+docker pull ghcr.io/oleksiyp/derived-secret-operator:v1.0.0
+```
+
 ## Contributing
-// TODO(user): Add detailed information on how you would like others to contribute to this project
+
+Contributions are welcome! Please feel free to submit a Pull Request.
 
 **NOTE:** Run `make help` for more information on all potential `make` targets
 

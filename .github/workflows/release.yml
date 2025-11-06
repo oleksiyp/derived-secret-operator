@@ -1,9 +1,13 @@
 name: Release
 
+# Manually trigger releases when ready
 on:
-  push:
-    tags:
-      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., 1.0.0)'
+        required: true
+        type: string
 
 permissions:
   contents: write
@@ -19,113 +23,142 @@ jobs:
         with:
           fetch-depth: 0
 
+      - name: Validate version
+        run: |
+          if [[ ! "${{ inputs.version }}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "❌ Invalid version format. Use semver (e.g., 1.0.0)"
+            exit 1
+          fi
+
+      - name: Check if tag exists
+        run: |
+          if git rev-parse "v${{ inputs.version }}" >/dev/null 2>&1; then
+            echo "❌ Tag v${{ inputs.version }} already exists"
+            exit 1
+          fi
+
       - name: Set up Go
         uses: actions/setup-go@v6
         with:
           go-version: '1.24'
           cache: true
 
-      - name: Install cosign
-        uses: sigstore/cosign-installer@v3
-
-      - name: Install syft
-        uses: anchore/sbom-action/download-syft@v0
-
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to GitHub Container Registry
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.17.0
+
+      - name: Install cosign
+        uses: sigstore/cosign-installer@v3
+
+      - name: Login to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=semver,pattern={{version}}
-            type=semver,pattern={{major}}.{{minor}}
-            type=semver,pattern={{major}}
-            type=sha
+      # Update versions in files
+      - name: Update Chart.yaml
+        run: |
+          sed -i "s/^version: .*/version: ${{ inputs.version }}/" charts/derived-secret-operator/Chart.yaml
+          sed -i "s/^appVersion: .*/appVersion: ${{ inputs.version }}/" charts/derived-secret-operator/Chart.yaml
 
-      - name: Build and push image
+      # Build and push Docker images
+      - name: Build and push Docker images
         id: build
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
+          tags: |
+            ghcr.io/${{ github.repository }}:v${{ inputs.version }}
+            ghcr.io/${{ github.repository }}:latest
+          labels: |
+            org.opencontainers.image.title=derived-secret-operator
+            org.opencontainers.image.version=${{ inputs.version }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
           build-args: |
-            VERSION=${{ github.ref_name }}
+            VERSION=${{ inputs.version }}
             COMMIT=${{ github.sha }}
-            BUILD_DATE=${{ github.event.repository.updated_at }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
           sbom: true
           provenance: true
 
-      - name: Sign the images with cosign
-        run: |
-          cosign sign --yes ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
+      # Sign images
+      - name: Sign images
+        run: cosign sign --yes ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
 
+      # Generate SBOM
       - name: Generate SBOM
         run: |
+          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
           syft ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }} -o spdx-json=sbom.spdx.json
-
-      - name: Attest SBOM
-        run: |
           cosign attest --yes --predicate sbom.spdx.json --type spdx ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
 
-      - name: Generate CRDs
-        run: make manifests
-
-      - name: Create install.yaml
-        run: |
-          cd config/manager && kustomize edit set image controller=ghcr.io/${{ github.repository }}:${{ github.ref_name }}
-          kustomize build config/default > install.yaml
-
+      # Package Helm chart
       - name: Package Helm chart
         run: |
-          helm package charts/derived-secret-operator --version ${{ github.ref_name }} --app-version ${{ github.ref_name }}
+          helm package charts/derived-secret-operator
+          echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+          helm push derived-secret-operator-${{ inputs.version }}.tgz oci://ghcr.io/${{ github.repository_owner }}/charts
 
-      - name: Create Release
+      # Generate install.yaml
+      - name: Generate install.yaml
+        run: |
+          make build-installer IMG=ghcr.io/${{ github.repository }}:v${{ inputs.version }}
+
+      # Create git tag
+      - name: Create and push tag
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -a "v${{ inputs.version }}" -m "Release v${{ inputs.version }}"
+          git push origin "v${{ inputs.version }}"
+
+      # Create GitHub Release with automatic PR summary
+      - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            install.yaml
-            config/crd/bases/*.yaml
-            derived-secret-operator-*.tgz
-            sbom.spdx.json
+          tag_name: v${{ inputs.version }}
+          name: v${{ inputs.version }}
           generate_release_notes: true
+          body: |
+            ## Installation
+
+            ### Using kubectl
+            ```bash
+            kubectl apply -f https://github.com/${{ github.repository }}/releases/download/v${{ inputs.version }}/install.yaml
+            ```
+
+            ### Using Helm
+            ```bash
+            helm install derived-secret-operator \
+              oci://ghcr.io/${{ github.repository_owner }}/charts/derived-secret-operator \
+              --version ${{ inputs.version }} \
+              --namespace derived-secret-operator-system \
+              --create-namespace
+            ```
+
+            ### Using Docker
+            ```bash
+            docker pull ghcr.io/${{ github.repository }}:v${{ inputs.version }}
+            ```
+
+            ## Container Images
+            - `ghcr.io/${{ github.repository }}:v${{ inputs.version }}`
+            - `ghcr.io/${{ github.repository }}:latest`
+
+            **Architectures:** linux/amd64, linux/arm64
+            **Signed with:** cosign
+            **SBOM:** Included (SPDX format)
+          files: |
+            dist/install.yaml
+            sbom.spdx.json
           draft: false
           prerelease: false
-
-  publish-helm:
-    name: Publish Helm Chart
-    runs-on: ubuntu-latest
-    needs: release
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Configure Git
-        run: |
-          git config user.name "$GITHUB_ACTOR"
-          git config user.email "$GITHUB_ACTOR@users.noreply.github.com"
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Package and push Helm chart
-        run: |
-          helm package charts/derived-secret-operator --version ${{ github.ref_name }} --app-version ${{ github.ref_name }}
-          helm push derived-secret-operator-*.tgz oci://ghcr.io/${{ github.repository }}/charts
