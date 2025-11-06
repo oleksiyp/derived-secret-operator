@@ -1,6 +1,8 @@
 version: "2"
+
 run:
   allow-parallel-runners: true
+
 linters:
   default: none
   enable:
@@ -21,32 +23,36 @@ linters:
     - unconvert
     - unparam
     - unused
+
   settings:
     revive:
       rules:
         - name: comment-spacings
         - name: import-shadowing
+    lll:
+      line-length: 120
+      tab-width: 1
+
   exclusions:
-    generated: lax
     rules:
+      # Exclude lll for kubebuilder RBAC annotations (cannot be line-wrapped)
       - linters:
           - lll
-        path: api/*
+        source: "^// \\+kubebuilder:"
+      # Allow dupl in controller files (expected structural similarity in Reconcile functions)
       - linters:
           - dupl
-          - lll
-        path: internal/*
-    paths:
-      - third_party$
-      - builtin$
-      - examples$
+        paths:
+          - internal/controller/
+        text: ".*"
+      # Allow dot imports in test files (Ginkgo/Gomega standard practice)
+      - linters:
+          - revive
+        text: "dot-imports"
+        paths:
+          - _test\.go
+
 formatters:
   enable:
     - gofmt
     - goimports
-  exclusions:
-    generated: lax
-    paths:
-      - third_party$
-      - builtin$
-      - examples$

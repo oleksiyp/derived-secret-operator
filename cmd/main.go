@@ -80,7 +80,8 @@ func main() {
 	flag.StringVar(&metricsCertKey, "metrics-cert-key", "tls.key", "The name of the metrics server key file.")
 	flag.BoolVar(&enableHTTP2, "enable-http2", false,
 		"If set, HTTP/2 will be enabled for the metrics and webhook servers")
-	flag.StringVar(&operatorNamespace, "operator-namespace", os.Getenv("POD_NAMESPACE"), "The namespace where the operator is running")
+	flag.StringVar(&operatorNamespace, "operator-namespace", os.Getenv("POD_NAMESPACE"),
+		"The namespace where the operator is running")
 	opts := zap.Options{
 		Development: true,
 	}

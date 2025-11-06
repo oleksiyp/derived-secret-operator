@@ -36,6 +36,7 @@ import (
 )
 
 const (
+	// #nosec G101 -- Not a credential, Kubernetes finalizer name
 	masterPasswordFinalizer = "secrets.oleksiyp.dev/masterpassword-finalizer"
 	masterPasswordKey       = "masterPassword"
 	defaultLength           = 86
@@ -83,6 +84,7 @@ func (r *MasterPasswordReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 			log.Error(err, "Failed to add finalizer to MasterPassword")
 			return ctrl.Result{}, err
 		}
+		// Requeue immediately to continue reconciliation after finalizer is added
 		return ctrl.Result{Requeue: true}, nil
 	}
 
@@ -187,7 +189,10 @@ func (r *MasterPasswordReconciler) reconcileSecret(ctx context.Context, mp *secr
 }
 
 // handleDeletion handles the deletion of a MasterPassword
-func (r *MasterPasswordReconciler) handleDeletion(ctx context.Context, mp *secretsv1alpha1.MasterPassword) (ctrl.Result, error) {
+func (r *MasterPasswordReconciler) handleDeletion(
+	ctx context.Context,
+	mp *secretsv1alpha1.MasterPassword,
+) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
 	if !controllerutil.ContainsFinalizer(mp, masterPasswordFinalizer) {
@@ -216,13 +221,13 @@ func (r *MasterPasswordReconciler) handleDeletion(ctx context.Context, mp *secre
 	}
 
 	if dependentCount > 0 {
+		msg := fmt.Sprintf("MasterPassword is still in use by %d DerivedSecret(s)", dependentCount)
 		log.Info("Cannot delete MasterPassword - still in use by DerivedSecrets", "dependentCount", dependentCount)
-		r.setCondition(mp, "Ready", metav1.ConditionFalse, "DeletionBlocked",
-			fmt.Sprintf("MasterPassword is still in use by %d DerivedSecret(s)", dependentCount))
+		r.setCondition(mp, "Ready", metav1.ConditionFalse, "DeletionBlocked", msg)
 		if err := r.Status().Update(ctx, mp); err != nil {
 			log.Error(err, "Failed to update status")
 		}
-		return ctrl.Result{RequeueAfter: ctrl.Result{}.RequeueAfter}, fmt.Errorf("MasterPassword still in use by %d DerivedSecret(s)", dependentCount)
+		return ctrl.Result{}, fmt.Errorf("%s", msg)
 	}
 
 	// Remove finalizer
@@ -290,7 +295,12 @@ func (r *MasterPasswordReconciler) getSecretNameAndNamespace(mp *secretsv1alpha1
 }
 
 // setCondition sets a condition on the MasterPassword
-func (r *MasterPasswordReconciler) setCondition(mp *secretsv1alpha1.MasterPassword, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *MasterPasswordReconciler) setCondition(
+	mp *secretsv1alpha1.MasterPassword,
+	condType string,
+	status metav1.ConditionStatus,
+	reason, message string,
+) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,

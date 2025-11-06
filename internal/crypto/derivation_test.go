@@ -23,27 +23,27 @@ import (
 
 func TestDeriveSecret(t *testing.T) {
 	tests := []struct {
-		name            string
-		masterPassword  string
-		context         string
-		length          int
-		wantErr         bool
+		name             string
+		masterPassword   string
+		context          string
+		length           int
+		wantErr          bool
 		checkDeterminism bool
 	}{
 		{
-			name:            "derive password length",
-			masterPassword:  "test-master-password",
-			context:         "namespace/name/key1",
-			length:          26,
-			wantErr:         false,
+			name:             "derive password length",
+			masterPassword:   "test-master-password",
+			context:          "namespace/name/key1",
+			length:           26,
+			wantErr:          false,
 			checkDeterminism: true,
 		},
 		{
-			name:            "derive encryption key length",
-			masterPassword:  "test-master-password",
-			context:         "namespace/name/key2",
-			length:          48,
-			wantErr:         false,
+			name:             "derive encryption key length",
+			masterPassword:   "test-master-password",
+			context:          "namespace/name/key2",
+			length:           48,
+			wantErr:          false,
 			checkDeterminism: true,
 		},
 		{
