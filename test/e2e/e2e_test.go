@@ -373,7 +373,7 @@ spec:
       masterPassword: %s
 `, derivedSecretName, testNamespace, secondMasterPasswordName)
 			cmd = exec.Command("kubectl", "apply", "-f", "-")
-			cmd.Stdin = exec.Command("echo", updatedDerivedSecretYAML).Stdout
+			cmd.Stdin = strings.NewReader(updatedDerivedSecretYAML)
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "Failed to update derived secret")
 
