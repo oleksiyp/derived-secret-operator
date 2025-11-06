@@ -70,6 +70,58 @@ jobs:
         with:
           args: ./...
 
+  helm:
+    name: Helm Lint, Test & Publish
+    runs-on: ubuntu-latest
+    needs: [lint, test, security]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.17.0
+
+      - name: Lint Helm chart
+        run: helm lint charts/derived-secret-operator
+
+      - name: Template Helm chart
+        run: |
+          helm template test-release charts/derived-secret-operator \
+            --namespace test-namespace \
+            --set image.tag=edge > /dev/null
+          echo "✅ Helm chart templates successfully"
+
+      - name: Validate CRDs in chart
+        run: |
+          if [ ! -d "charts/derived-secret-operator/crds" ]; then
+            echo "❌ CRDs directory not found"
+            exit 1
+          fi
+          crd_count=$(find charts/derived-secret-operator/crds -name "*.yaml" | wc -l)
+          if [ "$crd_count" -eq 0 ]; then
+            echo "❌ No CRD files found"
+            exit 1
+          fi
+          echo "✅ Found $crd_count CRD file(s)"
+
+      - name: Login to GitHub Container Registry
+        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
+
+      - name: Package and push Helm chart
+        run: |
+          # Get chart version from Chart.yaml
+          CHART_VERSION=$(grep '^version:' charts/derived-secret-operator/Chart.yaml | awk '{print $2}')
+          echo "Chart version: ${CHART_VERSION}"
+
+          # Package the chart
+          helm package charts/derived-secret-operator
+
+          # Push to GHCR (OCI registry)
+          helm push derived-secret-operator-${CHART_VERSION}.tgz oci://ghcr.io/${{ github.repository_owner }}/charts
+
+          echo "✅ Helm chart pushed to ghcr.io/${{ github.repository_owner }}/charts/derived-secret-operator:${CHART_VERSION}"
+
   build-image:
     name: Build and Push Container Image
     runs-on: ubuntu-latest

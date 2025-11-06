@@ -74,6 +74,40 @@ jobs:
         with:
           args: ./...
 
+  helm:
+    name: Helm Lint & Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Helm
+        uses: azure/setup-helm@v4
+        with:
+          version: v3.17.0
+
+      - name: Lint Helm chart
+        run: helm lint charts/derived-secret-operator
+
+      - name: Template Helm chart
+        run: |
+          helm template test-release charts/derived-secret-operator \
+            --namespace test-namespace \
+            --set image.tag=test > /dev/null
+          echo "✅ Helm chart templates successfully"
+
+      - name: Validate CRDs in chart
+        run: |
+          if [ ! -d "charts/derived-secret-operator/crds" ]; then
+            echo "❌ CRDs directory not found"
+            exit 1
+          fi
+          crd_count=$(find charts/derived-secret-operator/crds -name "*.yaml" | wc -l)
+          if [ "$crd_count" -eq 0 ]; then
+            echo "❌ No CRD files found"
+            exit 1
+          fi
+          echo "✅ Found $crd_count CRD file(s)"
+
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
