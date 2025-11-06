@@ -167,79 +167,62 @@ the '--force' flag and manually ensure that any custom configuration
 previously added to 'dist/chart/values.yaml' or 'dist/chart/manager/manager.yaml'
 is manually re-applied afterwards.
 
-## Release Process
+## Releases
 
-This project uses [release-please](https://github.com/googleapis/release-please) for automated releases based on [Conventional Commits](https://www.conventionalcommits.org/).
+### Snapshots (Testing)
 
-### How It Works
+Snapshots are built automatically on every push to main:
 
-1. **Commit with conventional format**: Use commit messages like:
-   - `feat: add new feature` - Creates a minor version bump (0.1.0 → 0.2.0)
-   - `fix: resolve bug` - Creates a patch version bump (0.1.0 → 0.1.1)
-   - `feat!: breaking change` - Creates a major version bump (0.1.0 → 1.0.0)
-   - `docs: update documentation` - Documented but doesn't bump version
-
-2. **Release PR created automatically**: release-please creates/updates a PR with:
-   - Updated CHANGELOG.md
-   - Updated version numbers in Chart.yaml and appVersion
-   - Proposed version bump based on commit types
-
-3. **Merge to trigger release**: When you merge the release PR:
-   - GitHub Release is created with changelog
-   - Multi-arch Docker images are built and pushed to GHCR
-   - Helm chart is packaged and pushed to GHCR
-   - Installation YAML is attached to the release
-
-### Commit Message Format
-
-```
-<type>(<scope>): <subject>
-
-<body>
-
-<footer>
-```
-
-**Types:**
-- `feat`: New features (minor version bump)
-- `fix`: Bug fixes (patch version bump)
-- `docs`: Documentation only changes
-- `style`: Code style changes (formatting, etc.)
-- `refactor`: Code refactoring
-- `perf`: Performance improvements
-- `test`: Adding or updating tests
-- `build`: Build system changes
-- `ci`: CI configuration changes
-- `chore`: Other changes that don't modify src or test files
-
-**Breaking changes:** Add `!` after type (e.g., `feat!:`) or add `BREAKING CHANGE:` in footer
-
-### Example Commits
-
+**Docker Images:**
 ```bash
-# Feature (minor bump: 0.1.0 → 0.2.0)
-git commit -m "feat: add support for custom Argon2id parameters"
+# Always latest main branch
+docker pull ghcr.io/oleksiyp/derived-secret-operator:edge
 
-# Bug fix (patch bump: 0.1.0 → 0.1.1)
-git commit -m "fix: resolve memory leak in secret reconciliation"
-
-# Breaking change (major bump: 0.1.0 → 1.0.0)
-git commit -m "feat!: change DerivedSecret CRD structure
-
-BREAKING CHANGE: The spec.keys field now requires explicit type field"
-
-# Documentation (no version bump)
-git commit -m "docs: add examples for complex use cases"
+# Specific commit
+docker pull ghcr.io/oleksiyp/derived-secret-operator:sha-abc123
 ```
 
-### Manual Version Override
-
-To manually set a specific version, include `Release-As: x.y.z` in the commit body:
-
+**Helm Charts:**
 ```bash
-git commit -m "feat: new feature
+# Get version from CI logs (e.g., 0.1.0-dev.abc123)
+helm install my-app \
+  oci://ghcr.io/oleksiyp/charts/derived-secret-operator \
+  --version 0.1.0-dev.abc123
+```
 
-Release-As: 1.0.0"
+### Official Releases
+
+Releases are created manually via GitHub Actions:
+
+1. Go to [GitHub Actions → Release workflow](https://github.com/oleksiyp/derived-secret-operator/actions/workflows/release.yml)
+2. Click "Run workflow"
+3. Enter version number (e.g., `1.0.0`)
+4. Release publishes automatically:
+   - Multi-arch Docker images (amd64 + arm64)
+   - Helm chart
+   - Signed with cosign + SBOM
+   - GitHub Release with:
+     - Automatic summary of merged PRs
+     - Installation instructions
+     - install.yaml attachment
+
+**Version Format:** Use [Semantic Versioning](https://semver.org/)
+- Major (1.0.0 → 2.0.0): Breaking changes
+- Minor (1.0.0 → 1.1.0): New features, backwards compatible
+- Patch (1.0.0 → 1.0.1): Bug fixes
+
+**Installation from release:**
+```bash
+# kubectl
+kubectl apply -f https://github.com/oleksiyp/derived-secret-operator/releases/download/v1.0.0/install.yaml
+
+# Helm
+helm install derived-secret-operator \
+  oci://ghcr.io/oleksiyp/charts/derived-secret-operator \
+  --version 1.0.0
+
+# Docker
+docker pull ghcr.io/oleksiyp/derived-secret-operator:v1.0.0
 ```
 
 ## Contributing
