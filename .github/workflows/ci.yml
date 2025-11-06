@@ -1,16 +1,12 @@
-name: PR Build
+name: CI
 
 on:
-  pull_request:
+  push:
     branches: [ main ]
-
-concurrency:
-  group: ${{ github.workflow }}-${{ github.event.pull_request.number }}
-  cancel-in-progress: true
 
 permissions:
   contents: read
-  pull-requests: write
+  packages: write
 
 jobs:
   lint:
@@ -74,6 +70,47 @@ jobs:
         with:
           args: ./...
 
+  build-image:
+    name: Build and Push Container Image
+    runs-on: ubuntu-latest
+    needs: [lint, test, security]
+    steps:
+      - uses: actions/checkout@v5
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Login to GitHub Container Registry
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ghcr.io/${{ github.repository }}
+          tags: |
+            type=edge,branch=main
+            type=sha,prefix={{branch}}-
+
+      - name: Build and push image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
+          build-args: |
+            VERSION=edge
+            COMMIT=${{ github.sha }}
+            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
@@ -109,29 +146,10 @@ jobs:
 
       - name: Run E2E tests
         run: |
-          # Create test resources (skip kustomization.yaml)
+          # Create test resources
           kubectl apply -f config/samples/secrets_v1alpha1_masterpassword.yaml
           kubectl apply -f config/samples/secrets_v1alpha1_derivedsecret.yaml
 
           # Wait and verify
           kubectl wait --for=condition=ready --timeout=60s masterpassword/default
           kubectl wait --for=condition=ready --timeout=60s derivedsecret -l app=test
-
-  build-image:
-    name: Build Container Image
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Build image
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: linux/amd64
-          push: false
-          tags: ghcr.io/oleksiyp/derived-secret-operator:pr-${{ github.event.number }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
