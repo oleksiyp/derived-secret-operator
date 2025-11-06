@@ -1,28 +1,16 @@
-name: CI/CD
+name: CI
 
 on:
   push:
     branches: [ main ]
 
 permissions:
-  contents: write
+  contents: read
   packages: write
-  pull-requests: write
-  id-token: write
-
-# This workflow handles everything for the main branch:
-# 1. Validation (lint, test, security)
-# 2. Snapshot publishing (Docker edge + Helm dev versions)
-# 3. Release-please PR management (automatic)
-# 4. Official releases (when Release PR is merged)
 
 jobs:
-  # ============================================================================
-  # VALIDATION JOBS
-  # ============================================================================
-
-  lint:
-    name: Lint
+  validate:
+    name: Validate
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -33,51 +21,24 @@ jobs:
           go-version: '1.24'
           cache: true
 
-      - name: Run golangci-lint
+      - name: Lint
         uses: golangci/golangci-lint-action@v8
         with:
           version: v2.6.1
           args: --timeout=5m
 
-  test:
-    name: Test
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: '1.24'
-          cache: true
-
-      - name: Install envtest binaries
+      - name: Test
         run: |
           make envtest
-          echo "KUBEBUILDER_ASSETS=$(./bin/setup-envtest use -p path)" >> $GITHUB_ENV
-
-      - name: Run tests
-        run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
+          export KUBEBUILDER_ASSETS=$(./bin/setup-envtest use -p path)
+          go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Upload coverage
         uses: codecov/codecov-action@v5
         with:
           files: ./coverage.out
-          flags: unittests
 
-  security:
-    name: Security Scan
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: '1.24'
-          cache: true
-
-      - name: Run Gosec Security Scanner
+      - name: Security scan
         uses: securego/gosec@v2.22.10
         with:
           args: ./...
@@ -100,77 +61,52 @@ jobs:
           cluster_name: test-cluster
           version: v0.20.0
 
-      - name: Build Docker image
+      - name: Build and test
         run: |
           make docker-build IMG=derived-secret-operator:test
           kind load docker-image derived-secret-operator:test --name test-cluster
-
-      - name: Install CRDs
-        run: make install
-
-      - name: Deploy operator
-        run: make deploy IMG=derived-secret-operator:test
-
-      - name: Wait for operator
-        run: |
+          make install
+          make deploy IMG=derived-secret-operator:test
           kubectl wait --for=condition=available --timeout=300s deployment/derived-secret-operator-controller-manager -n derived-secret-operator-system
-
-      - name: Run E2E tests
-        run: |
           kubectl apply -f config/samples/secrets_v1alpha1_masterpassword.yaml
           kubectl apply -f config/samples/secrets_v1alpha1_derivedsecret.yaml
           kubectl wait --for=condition=ready --timeout=60s masterpassword/default
           kubectl wait --for=condition=ready --timeout=60s derivedsecret -l app=test
 
-  # ============================================================================
-  # SNAPSHOT PUBLISHING (Always runs on main push)
-  # ============================================================================
-
+  # Build and push snapshot artifacts on every main push
   snapshot-docker:
-    name: Publish Snapshot Docker Images
+    name: Snapshot Docker Images
     runs-on: ubuntu-latest
-    needs: [lint, test, security]
+    needs: [validate, e2e]
     steps:
       - uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
 
-      - name: Login to GitHub Container Registry
+      - name: Login to GHCR
         uses: docker/login-action@v3
         with:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      - name: Extract metadata
-        id: meta
-        uses: docker/metadata-action@v5
-        with:
-          images: ghcr.io/${{ github.repository }}
-          tags: |
-            type=edge,branch=main
-            type=sha,prefix=main-
-
-      - name: Build and push snapshot images
+      - name: Build and push
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
-          tags: ${{ steps.meta.outputs.tags }}
-          labels: ${{ steps.meta.outputs.labels }}
-          build-args: |
-            VERSION=edge
-            COMMIT=${{ github.sha }}
-            BUILD_DATE=${{ github.event.head_commit.timestamp }}
+          tags: |
+            ghcr.io/${{ github.repository }}:edge
+            ghcr.io/${{ github.repository }}:sha-${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
   snapshot-helm:
-    name: Publish Snapshot Helm Chart
+    name: Snapshot Helm Chart
     runs-on: ubuntu-latest
-    needs: [lint, test, security]
+    needs: [validate]
     steps:
       - uses: actions/checkout@v5
 
@@ -179,217 +115,26 @@ jobs:
         with:
           version: v3.17.0
 
-      - name: Lint Helm chart
+      - name: Lint chart
         run: helm lint charts/derived-secret-operator
 
-      - name: Template Helm chart
-        run: |
-          helm template test-release charts/derived-secret-operator \
-            --namespace test-namespace \
-            --set image.tag=edge > /dev/null
-          echo "✅ Helm chart templates successfully"
-
-      - name: Validate CRDs in chart
-        run: |
-          crd_count=$(find charts/derived-secret-operator/crds -name "*.yaml" 2>/dev/null | wc -l)
-          if [ "$crd_count" -eq 0 ]; then
-            echo "❌ No CRD files found"
-            exit 1
-          fi
-          echo "✅ Found $crd_count CRD file(s)"
-
-      - name: Create snapshot Helm chart
+      - name: Package snapshot chart
         run: |
           BASE_VERSION=$(grep '^version:' charts/derived-secret-operator/Chart.yaml | awk '{print $2}')
-          SHORT_SHA=$(echo ${{ github.sha }} | cut -c1-7)
-          SNAPSHOT_VERSION="${BASE_VERSION}-dev.${SHORT_SHA}"
+          SNAPSHOT_VERSION="${BASE_VERSION}-dev.$(git rev-parse --short HEAD)"
 
-          echo "Snapshot version: ${SNAPSHOT_VERSION}"
-
-          # Update Chart.yaml with snapshot version
           sed -i.bak "s/^version: .*/version: ${SNAPSHOT_VERSION}/" charts/derived-secret-operator/Chart.yaml
           sed -i.bak "s/^appVersion: .*/appVersion: edge/" charts/derived-secret-operator/Chart.yaml
 
-          # Package the chart
           helm package charts/derived-secret-operator
-
-          # Restore original Chart.yaml
           mv charts/derived-secret-operator/Chart.yaml.bak charts/derived-secret-operator/Chart.yaml
 
           echo "SNAPSHOT_VERSION=${SNAPSHOT_VERSION}" >> $GITHUB_ENV
 
-      - name: Login to GitHub Container Registry
+      - name: Login to GHCR
         run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
 
-      - name: Push snapshot Helm chart
+      - name: Push snapshot chart
         run: |
           helm push derived-secret-operator-${{ env.SNAPSHOT_VERSION }}.tgz oci://ghcr.io/${{ github.repository_owner }}/charts
-          echo "✅ Published: oci://ghcr.io/${{ github.repository_owner }}/charts/derived-secret-operator:${{ env.SNAPSHOT_VERSION }}"
-
-  # ============================================================================
-  # RELEASE-PLEASE (Manages Release PRs)
-  # ============================================================================
-
-  release-please:
-    name: Release Please
-    runs-on: ubuntu-latest
-    outputs:
-      release_created: ${{ steps.release.outputs.release_created }}
-      tag_name: ${{ steps.release.outputs.tag_name }}
-      version: ${{ steps.release.outputs.major }}.${{ steps.release.outputs.minor }}.${{ steps.release.outputs.patch }}
-    steps:
-      - uses: googleapis/release-please-action@v4
-        id: release
-        with:
-          config-file: .release-please-config.json
-          manifest-file: .release-please-manifest.json
-
-  # ============================================================================
-  # OFFICIAL RELEASE (Only runs when Release PR is merged)
-  # ============================================================================
-
-  release-docker:
-    name: Release Docker Images
-    runs-on: ubuntu-latest
-    needs: release-please
-    if: ${{ needs.release-please.outputs.release_created }}
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Set up Docker Buildx
-        uses: docker/setup-buildx-action@v3
-
-      - name: Install cosign
-        uses: sigstore/cosign-installer@v3
-
-      - name: Login to GitHub Container Registry
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
-      - name: Build and push release images
-        id: build
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: linux/amd64,linux/arm64
-          push: true
-          tags: |
-            ghcr.io/${{ github.repository }}:${{ needs.release-please.outputs.tag_name }}
-            ghcr.io/${{ github.repository }}:latest
-          labels: |
-            org.opencontainers.image.title=derived-secret-operator
-            org.opencontainers.image.version=${{ needs.release-please.outputs.version }}
-            org.opencontainers.image.source=https://github.com/${{ github.repository }}
-          build-args: |
-            VERSION=${{ needs.release-please.outputs.version }}
-            COMMIT=${{ github.sha }}
-            BUILD_DATE=${{ github.event.head_commit.timestamp }}
-          cache-from: type=gha
-          cache-to: type=gha,mode=max
-          sbom: true
-          provenance: true
-
-      - name: Sign the images with cosign
-        run: |
-          cosign sign --yes ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
-
-      - name: Generate and attest SBOM
-        run: |
-          curl -sSfL https://raw.githubusercontent.com/anchore/syft/main/install.sh | sh -s -- -b /usr/local/bin
-          syft ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }} -o spdx-json=sbom.spdx.json
-          cosign attest --yes --predicate sbom.spdx.json --type spdx ghcr.io/${{ github.repository }}@${{ steps.build.outputs.digest }}
-
-  release-helm:
-    name: Release Helm Chart
-    runs-on: ubuntu-latest
-    needs: release-please
-    if: ${{ needs.release-please.outputs.release_created }}
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Set up Helm
-        uses: azure/setup-helm@v4
-        with:
-          version: v3.17.0
-
-      - name: Login to GitHub Container Registry
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
-
-      - name: Package and push Helm chart
-        run: |
-          CHART_VERSION=$(grep '^version:' charts/derived-secret-operator/Chart.yaml | awk '{print $2}')
-          helm package charts/derived-secret-operator
-          helm push derived-secret-operator-${CHART_VERSION}.tgz oci://ghcr.io/${{ github.repository_owner }}/charts
-          echo "✅ Published: oci://ghcr.io/${{ github.repository_owner }}/charts/derived-secret-operator:${CHART_VERSION}"
-
-  release-artifacts:
-    name: Release Artifacts
-    runs-on: ubuntu-latest
-    needs: [release-please, release-docker, release-helm]
-    if: ${{ needs.release-please.outputs.release_created }}
-    steps:
-      - uses: actions/checkout@v5
-
-      - name: Set up Go
-        uses: actions/setup-go@v6
-        with:
-          go-version: '1.24'
-          cache: true
-
-      - name: Generate installation YAML
-        run: |
-          make build-installer IMG=ghcr.io/${{ github.repository }}:${{ needs.release-please.outputs.tag_name }}
-
-      - name: Upload installation YAML to release
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          gh release upload ${{ needs.release-please.outputs.tag_name }} \
-            dist/install.yaml \
-            --clobber
-
-      - name: Update release notes
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        run: |
-          CHART_VERSION=$(grep '^version:' charts/derived-secret-operator/Chart.yaml | awk '{print $2}')
-
-          cat >> /tmp/release-notes.md <<EOF
-
-## Installation
-
-### Using kubectl
-\`\`\`bash
-kubectl apply -f https://github.com/${{ github.repository }}/releases/download/${{ needs.release-please.outputs.tag_name }}/install.yaml
-\`\`\`
-
-### Using Helm
-\`\`\`bash
-helm install derived-secret-operator \\
-  oci://ghcr.io/${{ github.repository_owner }}/charts/derived-secret-operator \\
-  --version ${CHART_VERSION} \\
-  --namespace derived-secret-operator-system \\
-  --create-namespace
-\`\`\`
-
-### Using Docker
-\`\`\`bash
-docker pull ghcr.io/${{ github.repository }}:${{ needs.release-please.outputs.tag_name }}
-\`\`\`
-
-## Container Images
-- \`ghcr.io/${{ github.repository }}:${{ needs.release-please.outputs.tag_name }}\`
-- \`ghcr.io/${{ github.repository }}:latest\`
-
-**Architectures:** linux/amd64, linux/arm64
-**Signed with:** cosign
-**SBOM:** Included (SPDX format)
-EOF
-
-          EXISTING_NOTES=$(gh release view ${{ needs.release-please.outputs.tag_name }} --json body -q .body)
-          echo "${EXISTING_NOTES}" > /tmp/full-notes.md
-          cat /tmp/release-notes.md >> /tmp/full-notes.md
-          gh release edit ${{ needs.release-please.outputs.tag_name }} --notes-file /tmp/full-notes.md
+          echo "📦 Snapshot published: oci://ghcr.io/${{ github.repository_owner }}/charts/derived-secret-operator:${{ env.SNAPSHOT_VERSION }}"

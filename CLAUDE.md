@@ -1,6 +1,6 @@
 # Derived Secret Operator - Development Guide
 
-This document provides guidance for Claude Code when working on this project.
+Guide for Claude Code when working on this project.
 
 ## Project Overview
 
@@ -9,92 +9,53 @@ Kubernetes operator that derives secrets deterministically from a master passwor
 **Tech Stack:**
 - Go 1.24+
 - Kubebuilder v4
-- controller-runtime v0.22.1
 - Kubernetes 1.31+
+- Multi-arch: linux/amd64, linux/arm64
 
-## Commit Message Format
+## Development Workflow
 
-**CRITICAL**: This project uses [Conventional Commits](https://www.conventionalcommits.org/) with [release-please](https://github.com/googleapis/release-please) for automated releases.
-
-### Format
-
-```
-<type>(<scope>): <subject>
-
-<body>
-
-<footer>
-```
-
-### Types and Version Bumps
-
-| Type | Version Bump | Example |
-|------|--------------|---------|
-| `fix:` | Patch (0.1.0 → 0.1.1) | Bug fixes |
-| `feat:` | Minor (0.1.0 → 0.2.0) | New features |
-| `feat!:` or `BREAKING CHANGE:` | Major (0.1.0 → 1.0.0) | Breaking changes |
-| `docs:` | None | Documentation only |
-| `style:` | None | Formatting, whitespace |
-| `refactor:` | None | Code restructuring |
-| `perf:` | Patch | Performance improvements |
-| `test:` | None | Adding tests |
-| `build:` | Patch | Build system changes |
-| `ci:` | None | CI configuration |
-| `chore:` | None | Maintenance tasks |
-
-### Commit Message Examples
-
+### 1. Work in Branches & PRs
 ```bash
-# Feature (minor version bump)
-feat: add support for custom Argon2id parameters
-
-Allow users to specify time, memory, and parallelism parameters
-for Argon2id key derivation in MasterPassword CRD.
-
-# Bug fix (patch version bump)
-fix: resolve nil pointer in DerivedSecret reconciliation
-
-Added nil check before accessing master password reference.
-
-Fixes #123
-
-# Breaking change (major version bump)
-feat!: change DerivedSecret CRD structure
-
-BREAKING CHANGE: The spec.keys field is now an array instead of a map.
-Users must update their DerivedSecret resources.
-
-Migration guide available in docs/migration.md
-
-# Documentation (no version bump)
-docs: add examples for complex secret derivation patterns
-
-# CI changes (no version bump)
-ci: optimize Docker build cache configuration
+git checkout -b feature/my-feature
+# make changes
+git commit -m "Add new feature"
+git push origin feature/my-feature
+# Create PR on GitHub
 ```
 
-### Scope Examples
+### 2. PR Gets Validated
+- Lint, test, security scan
+- E2E tests
+- Helm chart validation
+- Must pass before merge
 
-Common scopes for this project:
-- `api`: CRD changes
-- `controller`: Controller logic
-- `crypto`: Cryptography/KDF code
-- `helm`: Helm chart changes
-- `ci`: CI/CD workflows
-- `deps`: Dependency updates
+### 3. Merge PR → Snapshots Published
+- Docker: `ghcr.io/oleksiyp/derived-secret-operator:edge`
+- Docker: `ghcr.io/oleksiyp/derived-secret-operator:sha-abc123`
+- Helm: `oci://ghcr.io/oleksiyp/charts/derived-secret-operator:0.1.0-dev.abc123`
 
-### Footer Keywords
+### 4. Release When Ready
+- Go to GitHub Actions → Release workflow
+- Click "Run workflow"
+- Enter version (e.g., `1.0.0`)
+- Official release published automatically
 
-- `Fixes #123` - Links to issue
-- `Closes #123` - Closes issue
-- `BREAKING CHANGE: description` - Marks breaking changes
-- `Release-As: 1.0.0` - Manually override version
+## Commit Messages
 
-## Commit Signature
+Simple, descriptive messages. No special format required.
 
-**IMPORTANT**: Always include Happy and Claude co-authorship in commits:
-
+**Good examples:**
+```bash
+git commit -m "Add support for custom Argon2id parameters"
+git commit -m "Fix nil pointer in DerivedSecret reconciliation"
+git commit -m "Update Helm chart memory limits"
+git commit -m "Add examples to README"
 ```
+
+**Always include co-authorship:**
+```
+Add support for custom Argon2id parameters
+
 🤖 Generated with [Claude Code](https://claude.com/claude-code)
 via [Happy](https://happy.engineering)
 
@@ -102,60 +63,101 @@ Co-Authored-By: Claude <noreply@anthropic.com>
 Co-Authored-By: Happy <yesreply@happy.engineering>
 ```
 
-## Release Workflow
-
-### Before Pushing to Main
-
-**ALWAYS ASK** before pushing:
-1. "Should I trigger a release by merging the Release PR?"
-2. Wait for user confirmation
-
-### Release Process
-
-1. **Daily development** (automatic):
-   ```bash
-   git commit -m "feat: new feature"
-   git push origin main
-   ```
-   → Snapshots published immediately
-   → Release PR created/updated automatically
-
-2. **Creating official release** (manual):
-   - Review the Release PR created by release-please
-   - Check version bump is appropriate
-   - **Ask user**: "The Release PR is ready. Should I merge it to trigger the official release?"
-   - If yes: Merge the Release PR
-   - Result: Official v1.2.3 release published with Docker images, Helm chart, and GitHub Release
-
-### Snapshot Testing
-
-Snapshots are published on every main push:
-```bash
-# Docker
-ghcr.io/oleksiyp/derived-secret-operator:edge
-
-# Helm (check CI logs for exact version)
-oci://ghcr.io/oleksiyp/charts/derived-secret-operator:0.1.0-dev.abc123
-```
-
-## CI/CD Workflows
+## Workflows
 
 ### PR Workflow (`pr.yml`)
-- Triggers: Pull requests to main
-- Fast validation (amd64 only)
-- No publishing
+**Triggers:** Pull requests to main
+**Purpose:** Fast validation
+**Jobs:**
+- Lint (golangci-lint)
+- Test (unit tests with coverage)
+- Security scan (gosec)
+- Helm validation
+- E2E tests
+- Build test (amd64 only, no push)
 
-### CI/CD Workflow (`ci.yml`)
-- Triggers: Every push to main
-- **Phase 1**: Validation (lint, test, security, E2E)
-- **Phase 2**: Publish snapshots (always)
-- **Phase 3**: Create/update Release PR (always)
-- **Phase 4**: Publish official release (only when Release PR is merged)
+**Auto-cancels** outdated builds when new commits pushed.
+
+### CI Workflow (`ci.yml`)
+**Triggers:** Push to main (after PR merge)
+**Purpose:** Validation + snapshot publishing
+**Jobs:**
+- Validate (lint, test, security, E2E)
+- Snapshot Docker images → `edge` + `sha-xxx`
+- Snapshot Helm chart → `0.1.0-dev.xxx`
+
+**Snapshots** are published on every main push for testing.
+
+### Release Workflow (`release.yml`)
+**Triggers:** Manual (workflow_dispatch)
+**Purpose:** Create official versioned releases
+**Steps:**
+1. Go to GitHub Actions
+2. Select "Release" workflow
+3. Click "Run workflow"
+4. Enter version (e.g., `1.0.0`)
+5. Release publishes automatically:
+   - Docker images: `v1.0.0` + `latest`
+   - Helm chart: `1.0.0`
+   - GitHub Release with install.yaml
+   - Signed with cosign + SBOM
+
+## Testing Snapshots
+
+```bash
+# Docker
+docker pull ghcr.io/oleksiyp/derived-secret-operator:edge
+
+# Helm (check CI logs for exact version)
+helm install my-app \
+  oci://ghcr.io/oleksiyp/charts/derived-secret-operator \
+  --version 0.1.0-dev.abc123
+```
+
+## Testing Official Releases
+
+```bash
+# Docker
+docker pull ghcr.io/oleksiyp/derived-secret-operator:v1.0.0
+
+# Helm
+helm install my-app \
+  oci://ghcr.io/oleksiyp/charts/derived-secret-operator \
+  --version 1.0.0
+```
+
+## Common Tasks
+
+### Update Dependencies
+```bash
+go get -u ./...
+go mod tidy
+git commit -m "Update Go dependencies"
+```
+
+### Regenerate CRDs
+```bash
+make manifests
+git commit -m "Regenerate CRDs"
+```
+
+### Update Helm Chart
+```bash
+# Modify charts/derived-secret-operator/*
+# Version is updated automatically during release
+git commit -m "Add new Helm configuration option"
+```
+
+### Lint Fixes
+```bash
+make lint-fix
+git commit -m "Fix linting issues"
+```
 
 ## Code Guidelines
 
 ### Controller Best Practices
-- Always use structured logging with controller-runtime logger
+- Use structured logging with controller-runtime logger
 - Return `ctrl.Result{RequeueAfter: duration}` for transient errors
 - Use finalizers for cleanup logic
 - Validate CRDs with kubebuilder markers
@@ -169,85 +171,39 @@ oci://ghcr.io/oleksiyp/charts/derived-secret-operator:0.1.0-dev.abc123
 - Operator runs as non-root (UID 65532)
 - Read-only root filesystem
 - No privilege escalation
-- Secrets stored in etcd, encrypted at rest
+- Memory limits: 256Mi
 
-## Common Tasks
+## Versioning
 
-### Update Dependencies
-```bash
-go get -u ./...
-go mod tidy
-git commit -m "chore(deps): update Go dependencies"
-```
-
-### Regenerate CRDs
-```bash
-make manifests
-git commit -m "chore: regenerate CRDs"
-```
-
-### Update Helm Chart
-```bash
-# Modify charts/derived-secret-operator/*
-# Let release-please bump version
-git commit -m "feat(helm): add new configuration option"
-```
-
-### Lint Fixes
-```bash
-make lint-fix
-git commit -m "style: fix linting issues"
-```
-
-## Branch Protection
-
-- **main** branch is protected
-- All changes must go through PRs
-- CI must pass before merge
-- Squash-merge preferred for clean history
+Use semantic versioning (semver):
+- **Major** (1.0.0 → 2.0.0): Breaking changes
+- **Minor** (1.0.0 → 1.1.0): New features, backwards compatible
+- **Patch** (1.0.0 → 1.0.1): Bug fixes, backwards compatible
 
 ## Important Files
 
-- `.release-please-config.json` - Release configuration
-- `.release-please-manifest.json` - Current version tracking
-- `CHANGELOG.md` - Auto-generated by release-please
-- `.golangci.yml` - Linter configuration
 - `charts/derived-secret-operator/` - Helm chart
-
-## Questions Before Action
-
-Before performing these actions, **ALWAYS ASK THE USER**:
-
-1. **Before pushing to main**:
-   - "Ready to push? This will trigger CI/CD and create/update the Release PR."
-
-2. **When Release PR exists**:
-   - "I see there's a Release PR (#X) for version X.Y.Z. Should I merge it to trigger the official release?"
-
-3. **For breaking changes**:
-   - "This change might be breaking. Should I use `feat!:` or add `BREAKING CHANGE:` to the commit message?"
-
-4. **For version overrides**:
-   - "Should I include `Release-As: X.Y.Z` to manually set the version?"
+- `config/manager/manager.yaml` - Operator deployment config
+- `.golangci.yml` - Linter configuration
+- `.github/workflows/` - CI/CD workflows
 
 ## Troubleshooting
 
-### Release PR Not Created
-- Check conventional commit format
-- Must have `feat:` or `fix:` since last release
-
 ### CI Failing
 - Check GitHub Actions logs
-- Common issues: lint errors, test failures, memory limits
+- Common issues: lint errors, test failures, OOM
 
-### Helm Chart Conflicts
-- Snapshots use unique versions (0.1.0-dev.abc123)
-- Official releases use semver (0.1.0)
-- No conflicts possible
+### Snapshot Not Publishing
+- Check CI workflow completed successfully
+- Verify GHCR permissions
+
+### Release Failing
+- Check version format (must be semver: 1.0.0)
+- Verify tag doesn't already exist
+- Check GHCR permissions
 
 ## Resources
 
-- [Conventional Commits](https://www.conventionalcommits.org/)
-- [release-please](https://github.com/googleapis/release-please)
 - [Kubebuilder Book](https://book.kubebuilder.io/)
 - [Workflow Documentation](.github/WORKFLOWS.md)
+- [Project README](README.md)

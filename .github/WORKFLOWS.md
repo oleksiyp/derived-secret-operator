@@ -1,186 +1,132 @@
 # GitHub Actions Workflows
 
-This document explains the CI/CD workflow structure for this project.
+Simple 3-workflow CI/CD setup for PR-based development.
 
-## Workflow Overview
+## Overview
 
-We use **2 streamlined workflows**:
+```
+┌─────────────┐
+│   PR Build  │ ← Validation only (fast)
+└─────────────┘
 
-### 1. PR Build Workflow (`pr.yml`)
-**Trigger**: Pull requests to `main` branch
+┌─────────────┐
+│     CI      │ ← Validation + Snapshots (after merge)
+└─────────────┘
 
-**Purpose**: Fast validation of PRs before merge
+┌─────────────┐
+│  Release    │ ← Manual trigger for official releases
+└─────────────┘
+```
 
-**Jobs**:
-- ✅ Lint (Go code with golangci-lint)
-- ✅ Test (unit tests with coverage)
-- ✅ Security (Gosec scanner)
-- ✅ Helm (lint & template validation)
-- ✅ E2E Tests (Kind cluster integration tests)
-- ✅ Build Image (amd64 only for speed, no push)
+## Workflows
 
-**Features**:
-- Auto-cancels outdated builds when new commits pushed
-- Runs in ~5-10 minutes (amd64 only)
+### 1. PR Build (`pr.yml`)
 
-### 2. CI/CD Workflow (`ci.yml`)
-**Trigger**: Every push to `main` branch
+**Trigger:** Pull requests to `main`
 
-**Purpose**: Complete pipeline - validation, snapshots, and releases
+**Purpose:** Fast validation before merge
 
-**Four phases in one workflow:**
+**Jobs:**
+- Lint (golangci-lint)
+- Test (unit + coverage)
+- Security (gosec)
+- Helm validation
+- E2E tests
+- Build (amd64 only, no push)
 
-#### Phase 1: Validation
-- ✅ Lint, Test, Security, E2E (same as PR workflow)
+**Features:**
+- Auto-cancels outdated builds
+- Runs in ~5 minutes
+- Must pass before merge
 
-#### Phase 2: Snapshot Publishing (always runs)
-- ✅ Snapshot Docker Images:
+### 2. CI (`ci.yml`)
+
+**Trigger:** Push to `main` (after PR merge)
+
+**Purpose:** Validation + snapshot publishing
+
+**Jobs:**
+- Validate (same as PR)
+- E2E tests
+- Publish snapshot Docker images:
   - `ghcr.io/oleksiyp/derived-secret-operator:edge`
-  - `ghcr.io/oleksiyp/derived-secret-operator:main-<sha>`
-  - Multi-arch: linux/amd64, linux/arm64
-- ✅ Snapshot Helm Charts:
+  - `ghcr.io/oleksiyp/derived-secret-operator:sha-abc123`
+- Publish snapshot Helm chart:
   - `oci://ghcr.io/oleksiyp/charts/derived-secret-operator:0.1.0-dev.abc123`
-  - Unique version per commit (no conflicts)
 
-#### Phase 3: Release-Please (always runs)
-- Scans git history for conventional commits
-- Creates/updates a Release PR automatically
-- **Note**: No publishing yet - just PR management
+**Snapshots:** Updated on every main push for immediate testing
 
-#### Phase 4: Official Release Publishing (only when Release PR is merged)
-- ✅ Release Docker Images:
-  - `ghcr.io/oleksiyp/derived-secret-operator:v1.2.3`
-  - `ghcr.io/oleksiyp/derived-secret-operator:latest`
-  - Multi-arch, signed with cosign, includes SBOM
-- ✅ Release Helm Chart:
-  - `oci://ghcr.io/oleksiyp/charts/derived-secret-operator:1.2.3`
-- ✅ Release Artifacts:
-  - GitHub Release with changelog
-  - Installation YAML attached
+### 3. Release (`release.yml`)
+
+**Trigger:** Manual (workflow_dispatch)
+
+**Purpose:** Create official versioned releases
+
+**How to release:**
+1. Go to GitHub Actions
+2. Select "Release" workflow
+3. Click "Run workflow"
+4. Enter version (e.g., `1.0.0`)
+5. Click "Run workflow" button
+
+**What happens:**
+- Validates version format (semver)
+- Checks tag doesn't exist
+- Updates Chart.yaml versions
+- Builds multi-arch Docker images (amd64 + arm64)
+- Signs images with cosign
+- Generates SBOM
+- Packages Helm chart
+- Creates git tag `v1.0.0`
+- Creates GitHub Release with:
+  - Release notes
+  - install.yaml
+  - SBOM
   - Installation instructions
 
-**Control**: Merge the Release PR when you're ready to publish an official release!
+**Published artifacts:**
+- Docker: `ghcr.io/oleksiyp/derived-secret-operator:v1.0.0` + `latest`
+- Helm: `oci://ghcr.io/oleksiyp/charts/derived-secret-operator:1.0.0`
 
-## Workflow Responsibilities
+## Workflow Comparison
 
-| Workflow | Validation | Snapshots | Release PR | Official Release |
-|----------|-----------|-----------|------------|------------------|
-| PR Build | ✅ | ❌ | ❌ | ❌ |
-| CI/CD | ✅ | ✅ (always) | ✅ (always) | ✅ (on PR merge) |
+| Feature | PR Build | CI | Release |
+|---------|----------|-----|---------|
+| Trigger | PR | Push to main | Manual |
+| Validation | ✅ | ✅ | ❌ |
+| Snapshots | ❌ | ✅ | ❌ |
+| Versioned Release | ❌ | ❌ | ✅ |
+| Multi-arch | ❌ (amd64) | ✅ | ✅ |
+| Sign Images | ❌ | ❌ | ✅ |
+| SBOM | ❌ | ❌ | ✅ |
 
-**One workflow to rule them all!** The CI/CD workflow handles everything.
+## Development Flow
 
-## Why This Structure?
+### Daily Development
 
-### Previous Problems (4 workflows!)
-- ❌ Duplication between `ci.yml`, `release-please.yml`, and `release.yml`
-- ❌ Confusing separation of concerns
-- ❌ Hard to understand what runs when
-
-### Solution: Single Consolidated CI/CD Workflow
-- ✅ **One workflow** handles everything for main branch
-- ✅ **Clear phases** within the workflow
-- ✅ **Automatic snapshots** on every push (unique versions)
-- ✅ **Automatic Release PRs** (no manual intervention needed)
-- ✅ **Manual release control** (merge Release PR when ready)
-
-### Benefits
-- ✅ **Simple**: 2 workflows total (PR + CI/CD)
-- ✅ **No duplication**: Single source of truth
-- ✅ **No version conflicts**: Unique snapshot versions
-- ✅ **Snapshots immediately available**: Test latest changes instantly
-- ✅ **Manual release control**: You decide when to publish
-- ✅ **Secure releases**: Signed images, SBOM, provenance
-- ✅ **All artifacts in sync**: Docker + Helm + YAML
-
-## Artifact Versioning Strategy
-
-### Snapshot Artifacts (CI Workflow - Every Push)
-
-**Docker Images**:
 ```bash
-# Always latest main branch
-ghcr.io/oleksiyp/derived-secret-operator:edge
+# 1. Create feature branch
+git checkout -b feature/my-feature
 
-# Specific commit (for debugging)
-ghcr.io/oleksiyp/derived-secret-operator:main-abc123
+# 2. Make changes and commit
+git commit -m "Add new feature"
+git push origin feature/my-feature
+
+# 3. Create PR
+# → PR Build runs (validation)
+
+# 4. Merge PR
+# → CI runs (validation + snapshots)
 ```
 
-**Helm Charts**:
+### Testing Snapshots
+
 ```bash
-# Snapshot version with commit hash
-oci://ghcr.io/oleksiyp/charts/derived-secret-operator:0.1.0-dev.abc123
-
-# Install snapshot
-helm install my-app \
-  oci://ghcr.io/oleksiyp/charts/derived-secret-operator \
-  --version 0.1.0-dev.abc123
-```
-
-### Release Artifacts (Release-Please Workflow - Manual)
-
-**Docker Images**:
-```bash
-# Specific version (immutable)
-ghcr.io/oleksiyp/derived-secret-operator:v1.2.3
-
-# Latest stable release
-ghcr.io/oleksiyp/derived-secret-operator:latest
-```
-
-**Helm Charts**:
-```bash
-# Official release version
-oci://ghcr.io/oleksiyp/charts/derived-secret-operator:1.2.3
-
-# Install official release
-helm install my-app \
-  oci://ghcr.io/oleksiyp/charts/derived-secret-operator \
-  --version 1.2.3
-```
-
-Charts are versioned according to Chart.yaml, which is updated by release-please when you merge the Release PR.
-
-## Making a Release
-
-### Daily Development (Automatic)
-1. **Commit with conventional format** and push to main:
-   ```bash
-   git commit -m "feat: add new feature"
-   git push origin main
-   ```
-
-2. **Automatic snapshots published**:
-   - Docker: `ghcr.io/oleksiyp/derived-secret-operator:edge`
-   - Helm: `oci://ghcr.io/oleksiyp/charts/derived-secret-operator:0.1.0-dev.abc123`
-
-3. **Release-please creates/updates Release PR** (automatic, but not merged)
-
-### Creating an Official Release (Manual)
-1. **Review the Release PR** created by release-please:
-   - Check version bump is correct
-   - Review CHANGELOG.md changes
-   - Verify Chart.yaml updates
-
-2. **Merge the Release PR** (this is the manual trigger!)
-
-3. **Automated publishing happens**:
-   - Docker images: `v1.2.3` + `latest`
-   - Helm chart: `oci://ghcr.io/oleksiyp/charts/derived-secret-operator:1.2.3`
-   - GitHub Release with install.yaml
-   - Installation instructions
-
-**Key Point**: You control WHEN releases happen by choosing when to merge the Release PR. Snapshots are always available for testing.
-
-See [README.md Release Process section](../README.md#release-process) for detailed commit message format.
-
-## Troubleshooting
-
-### "How do I test latest main changes?"
-**Use snapshot artifacts**:
-```bash
-# Docker
+# Use edge tag (always latest main)
 docker pull ghcr.io/oleksiyp/derived-secret-operator:edge
+
+# Or specific commit
+docker pull ghcr.io/oleksiyp/derived-secret-operator:sha-abc123
 
 # Helm (get version from CI logs)
 helm install my-app \
@@ -188,14 +134,103 @@ helm install my-app \
   --version 0.1.0-dev.abc123
 ```
 
-### "Snapshot Helm charts not publishing"
-**Cause**: CI workflow may have failed
-**Solution**: Check CI workflow run in GitHub Actions, look for Helm job
+### Creating a Release
 
-### "Release-please PR not being created"
-**Cause**: No conventional commits since last release
-**Solution**: Ensure commits follow conventional format (feat:, fix:, etc.)
+1. **Decide on version** (semver):
+   - Major (1.0.0 → 2.0.0): Breaking changes
+   - Minor (1.0.0 → 1.1.0): New features
+   - Patch (1.0.0 → 1.0.1): Bug fixes
 
-### "Official release didn't publish"
-**Cause**: publish-release job only runs when Release PR is merged
-**Solution**: Merge the Release PR created by release-please
+2. **Trigger release**:
+   - Go to: https://github.com/oleksiyp/derived-secret-operator/actions/workflows/release.yml
+   - Click "Run workflow"
+   - Enter version
+   - Click "Run workflow"
+
+3. **Release publishes**:
+   - Docker images with version tags
+   - Helm chart with version
+   - GitHub Release with changelog
+   - All signed with cosign + SBOM
+
+## Versioning Strategy
+
+### Snapshots (Automatic)
+```
+Docker:  edge, sha-abc123
+Helm:    0.1.0-dev.abc123
+When:    Every main push
+Purpose: Testing latest changes
+```
+
+### Releases (Manual)
+```
+Docker:  v1.0.0, latest
+Helm:    1.0.0
+When:    Manual workflow trigger
+Purpose: Official stable releases
+```
+
+## Why This Structure?
+
+### ✅ Advantages
+- **Simple**: Easy to understand PR → CI → Release flow
+- **No automatic releases**: Full control over when to release
+- **Snapshots for testing**: Latest main always available
+- **Clean versioning**: Semver for releases, dev versions for snapshots
+- **Security**: Signed releases with SBOM
+- **No commit message requirements**: Write natural commit messages
+
+### ❌ What We Don't Use
+- **release-please**: Too complex for PR-based workflow
+- **Automatic releases**: You control when to release
+- **Conventional commits**: Not needed for this workflow
+
+## Troubleshooting
+
+### PR Build Failing
+**Check:** GitHub Actions → PR checks
+**Common causes:** Lint errors, test failures, E2E issues
+
+### Snapshots Not Publishing
+**Check:** CI workflow logs
+**Verify:** GHCR permissions, workflow completed
+
+### Release Failing
+**Common causes:**
+- Invalid version format (must be semver: 1.0.0)
+- Tag already exists
+- GHCR permission issues
+
+**Fix:**
+- Use correct semver format
+- Delete existing tag if needed
+- Check GHCR token permissions
+
+## Best Practices
+
+### Commit Messages
+Write clear, descriptive messages:
+```bash
+git commit -m "Add support for custom parameters"
+git commit -m "Fix memory leak in controller"
+git commit -m "Update Helm chart defaults"
+```
+
+### Before Release
+- [ ] All PRs merged
+- [ ] Snapshots tested
+- [ ] CHANGELOG updated (if you maintain one)
+- [ ] Breaking changes documented
+- [ ] Version number decided
+
+### After Release
+- [ ] Test official release artifacts
+- [ ] Update documentation if needed
+- [ ] Announce release (if applicable)
+
+## Resources
+
+- [Kubebuilder](https://book.kubebuilder.io/)
+- [Semantic Versioning](https://semver.org/)
+- [GitHub Actions](https://docs.github.com/en/actions)
