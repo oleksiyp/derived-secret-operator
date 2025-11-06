@@ -71,9 +71,11 @@ jobs:
           args: ./...
 
   helm:
-    name: Helm Lint, Test & Publish
+    name: Helm Lint & Test
     runs-on: ubuntu-latest
     needs: [lint, test, security]
+    # Note: This job only validates Helm charts, it does NOT publish them.
+    # Helm chart publishing is handled by the release-please workflow.
     steps:
       - uses: actions/checkout@v5
 
@@ -105,27 +107,12 @@ jobs:
           fi
           echo "✅ Found $crd_count CRD file(s)"
 
-      - name: Login to GitHub Container Registry
-        run: echo "${{ secrets.GITHUB_TOKEN }}" | helm registry login ghcr.io -u ${{ github.actor }} --password-stdin
-
-      - name: Package and push Helm chart
-        run: |
-          # Get chart version from Chart.yaml
-          CHART_VERSION=$(grep '^version:' charts/derived-secret-operator/Chart.yaml | awk '{print $2}')
-          echo "Chart version: ${CHART_VERSION}"
-
-          # Package the chart
-          helm package charts/derived-secret-operator
-
-          # Push to GHCR (OCI registry)
-          helm push derived-secret-operator-${CHART_VERSION}.tgz oci://ghcr.io/${{ github.repository_owner }}/charts
-
-          echo "✅ Helm chart pushed to ghcr.io/${{ github.repository_owner }}/charts/derived-secret-operator:${CHART_VERSION}"
-
   build-image:
     name: Build and Push Container Image
     runs-on: ubuntu-latest
     needs: [lint, test, security]
+    # Note: This job builds "edge" and "main-<sha>" images for continuous validation.
+    # Versioned release images are built by the release-please workflow.
     steps:
       - uses: actions/checkout@v5
 
