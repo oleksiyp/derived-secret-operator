@@ -36,7 +36,9 @@ import (
 )
 
 const (
-	derivedSecretFinalizer = "secrets.oleksiyp.dev/derivedsecret-finalizer"
+	// #nosec G101 -- Not a credential, Kubernetes finalizer name
+	derivedSecretFinalizer    = "secrets.oleksiyp.dev/derivedsecret-finalizer"
+	defaultMasterPasswordName = "default"
 )
 
 // DerivedSecretReconciler reconciles a DerivedSecret object
@@ -81,6 +83,7 @@ func (r *DerivedSecretReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 			log.Error(err, "Failed to add finalizer to DerivedSecret")
 			return ctrl.Result{}, err
 		}
+		// Requeue immediately to continue reconciliation after finalizer is added
 		return ctrl.Result{Requeue: true}, nil
 	}
 
@@ -113,7 +116,7 @@ func (r *DerivedSecretReconciler) reconcileDerivedSecret(ctx context.Context, ds
 	for keyName, keySpec := range ds.Spec.Keys {
 		masterPasswordName := keySpec.MasterPassword
 		if masterPasswordName == "" {
-			masterPasswordName = "default"
+			masterPasswordName = defaultMasterPasswordName
 		}
 
 		// Get the master password
@@ -124,9 +127,9 @@ func (r *DerivedSecretReconciler) reconcileDerivedSecret(ctx context.Context, ds
 
 		// Derive the secret
 		length := crypto.GetSecretLength(string(keySpec.Type), keySpec.Length)
-		context := crypto.BuildContext(ds.Namespace, ds.Name, keyName)
+		derivationContext := crypto.BuildContext(ds.Namespace, ds.Name, keyName)
 
-		derivedValue, err := crypto.DeriveSecret(masterPassword, context, length)
+		derivedValue, err := crypto.DeriveSecret(masterPassword, derivationContext, length)
 		if err != nil {
 			return fmt.Errorf("failed to derive secret for key %s: %w", keyName, err)
 		}
@@ -237,7 +240,10 @@ func (r *DerivedSecretReconciler) getMasterPassword(ctx context.Context, name st
 }
 
 // handleDeletion handles the deletion of a DerivedSecret
-func (r *DerivedSecretReconciler) handleDeletion(ctx context.Context, ds *secretsv1alpha1.DerivedSecret) (ctrl.Result, error) {
+func (r *DerivedSecretReconciler) handleDeletion(
+	ctx context.Context,
+	ds *secretsv1alpha1.DerivedSecret,
+) (ctrl.Result, error) {
 	log := logf.FromContext(ctx)
 
 	if !controllerutil.ContainsFinalizer(ds, derivedSecretFinalizer) {
@@ -293,7 +299,12 @@ func (r *DerivedSecretReconciler) updateStatus(ctx context.Context, ds *secretsv
 }
 
 // setCondition sets a condition on the DerivedSecret
-func (r *DerivedSecretReconciler) setCondition(ds *secretsv1alpha1.DerivedSecret, condType string, status metav1.ConditionStatus, reason, message string) {
+func (r *DerivedSecretReconciler) setCondition(
+	ds *secretsv1alpha1.DerivedSecret,
+	condType string,
+	status metav1.ConditionStatus,
+	reason, message string,
+) {
 	condition := metav1.Condition{
 		Type:               condType,
 		Status:             status,

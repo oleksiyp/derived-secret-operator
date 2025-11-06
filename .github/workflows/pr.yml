@@ -13,37 +13,42 @@ jobs:
     name: Lint
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.24'
           cache: true
 
       - name: Run golangci-lint
-        uses: golangci/golangci-lint-action@v6
+        uses: golangci/golangci-lint-action@v8
         with:
-          version: latest
+          version: v2.6.1
           args: --timeout=5m
 
   test:
     name: Test
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.24'
           cache: true
+
+      - name: Install envtest binaries
+        run: |
+          make envtest
+          echo "KUBEBUILDER_ASSETS=$(./bin/setup-envtest use -p path)" >> $GITHUB_ENV
 
       - name: Run tests
         run: go test -v -race -coverprofile=coverage.out -covermode=atomic ./...
 
       - name: Upload coverage
-        uses: codecov/codecov-action@v4
+        uses: codecov/codecov-action@v5
         with:
           files: ./coverage.out
           flags: unittests
@@ -52,32 +57,27 @@ jobs:
     name: Security Scan
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.24'
           cache: true
 
       - name: Run Gosec Security Scanner
-        uses: securego/gosec@master
+        uses: securego/gosec@v2.22.10
         with:
-          args: '-no-fail -fmt sarif -out results.sarif ./...'
-
-      - name: Upload SARIF file
-        uses: github/codeql-action/upload-sarif@v3
-        with:
-          sarif_file: results.sarif
+          args: ./...
 
   e2e:
     name: E2E Tests
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Go
-        uses: actions/setup-go@v5
+        uses: actions/setup-go@v6
         with:
           go-version: '1.24'
           cache: true
@@ -105,8 +105,9 @@ jobs:
 
       - name: Run E2E tests
         run: |
-          # Create test resources
-          kubectl apply -f config/samples/
+          # Create test resources (skip kustomization.yaml)
+          kubectl apply -f config/samples/secrets_v1alpha1_masterpassword.yaml
+          kubectl apply -f config/samples/secrets_v1alpha1_derivedsecret.yaml
 
           # Wait and verify
           kubectl wait --for=condition=ready --timeout=60s masterpassword/default
@@ -116,7 +117,7 @@ jobs:
     name: Build Container Image
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
