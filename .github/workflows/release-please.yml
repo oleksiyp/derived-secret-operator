@@ -9,6 +9,10 @@ permissions:
   contents: write
   pull-requests: write
 
+# How this workflow works:
+# 1. Every push to main: Creates/updates a Release PR with version bump
+# 2. When you manually MERGE the Release PR: Publishes official release
+# 3. Snapshots are published by CI workflow on every push
 jobs:
   release-please:
     runs-on: ubuntu-latest
@@ -24,7 +28,7 @@ jobs:
           config-file: .release-please-config.json
           manifest-file: .release-please-manifest.json
 
-  # Build and publish releases when release-please creates a release
+  # This job ONLY runs when Release PR is merged (release_created == true)
   publish-release:
     runs-on: ubuntu-latest
     needs: release-please
