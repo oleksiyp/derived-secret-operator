@@ -344,7 +344,7 @@ spec:
   length: 86
 `, secondMasterPasswordName)
 			cmd = exec.Command("kubectl", "apply", "-f", "-")
-			cmd.Stdin = exec.Command("echo", secondMPYAML).Stdout
+			cmd.Stdin = strings.NewReader(secondMPYAML)
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "Failed to create second master password")
 
@@ -373,7 +373,7 @@ spec:
       masterPassword: %s
 `, derivedSecretName, testNamespace, secondMasterPasswordName)
 			cmd = exec.Command("kubectl", "apply", "-f", "-")
-			cmd.Stdin = exec.Command("echo", updatedDerivedSecretYAML).Stdout
+			cmd.Stdin = strings.NewReader(updatedDerivedSecretYAML)
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "Failed to update derived secret")
 
