@@ -4,7 +4,7 @@ This document explains the CI/CD workflow structure for this project.
 
 ## Workflow Overview
 
-We use three main workflows with clear separation of concerns:
+We use **2 streamlined workflows**:
 
 ### 1. PR Build Workflow (`pr.yml`)
 **Trigger**: Pull requests to `main` branch
@@ -23,78 +23,75 @@ We use three main workflows with clear separation of concerns:
 - Auto-cancels outdated builds when new commits pushed
 - Runs in ~5-10 minutes (amd64 only)
 
-### 2. CI Workflow (`ci.yml`)
+### 2. CI/CD Workflow (`ci.yml`)
 **Trigger**: Every push to `main` branch
 
-**Purpose**: Continuous validation + snapshot publishing
+**Purpose**: Complete pipeline - validation, snapshots, and releases
 
-**Jobs**:
-- ✅ Lint, Test, Security (same as PR)
-- ✅ Helm Lint, Test & Publish Snapshot:
-  - Creates snapshot versions: `0.1.0-dev.abc123`
-  - Pushes to `oci://ghcr.io/oleksiyp/charts/derived-secret-operator:0.1.0-dev.abc123`
-  - Doesn't modify Chart.yaml in git (version bump happens via release-please)
-- ✅ Build & Push Edge Images:
+**Four phases in one workflow:**
+
+#### Phase 1: Validation
+- ✅ Lint, Test, Security, E2E (same as PR workflow)
+
+#### Phase 2: Snapshot Publishing (always runs)
+- ✅ Snapshot Docker Images:
   - `ghcr.io/oleksiyp/derived-secret-operator:edge`
   - `ghcr.io/oleksiyp/derived-secret-operator:main-<sha>`
   - Multi-arch: linux/amd64, linux/arm64
-- ✅ E2E Tests
+- ✅ Snapshot Helm Charts:
+  - `oci://ghcr.io/oleksiyp/charts/derived-secret-operator:0.1.0-dev.abc123`
+  - Unique version per commit (no conflicts)
 
-**Snapshots**: Every main push creates a snapshot Helm chart for testing latest changes.
-
-### 3. Release Please Workflow (`release-please.yml`)
-**Trigger**: Every push to `main` branch (but only publishes on Release PR merge)
-
-**Purpose**: Automated releases based on Conventional Commits
-
-**Phase 1 - Release PR Management** (automatic on every push):
+#### Phase 3: Release-Please (always runs)
 - Scans git history for conventional commits
-- Creates/updates a Release PR with:
-  - Version bump (semver based on commit types)
-  - Updated CHANGELOG.md
-  - Updated Chart.yaml (version + appVersion)
-- **Note**: No publishing happens yet - just PR creation/update
+- Creates/updates a Release PR automatically
+- **Note**: No publishing yet - just PR management
 
-**Phase 2 - Release Publishing** (only when you manually merge the Release PR):
-- ✅ Build & Push Versioned Docker Images:
+#### Phase 4: Official Release Publishing (only when Release PR is merged)
+- ✅ Release Docker Images:
   - `ghcr.io/oleksiyp/derived-secret-operator:v1.2.3`
   - `ghcr.io/oleksiyp/derived-secret-operator:latest`
-  - Multi-arch: linux/amd64, linux/arm64
-- ✅ Package & Push Official Helm Chart:
+  - Multi-arch, signed with cosign, includes SBOM
+- ✅ Release Helm Chart:
   - `oci://ghcr.io/oleksiyp/charts/derived-secret-operator:1.2.3`
-- ✅ Generate & Upload installation YAML
-- ✅ Create GitHub Release with:
-  - Changelog from CHANGELOG.md
+- ✅ Release Artifacts:
+  - GitHub Release with changelog
+  - Installation YAML attached
   - Installation instructions
-  - Attached install.yaml
 
-**Control**: You decide when to release by merging the Release PR. No automatic releases!
+**Control**: Merge the Release PR when you're ready to publish an official release!
 
 ## Workflow Responsibilities
 
-| Workflow | Validation | Snapshot Images | Snapshot Helm | Release Images | Release Helm |
-|----------|-----------|----------------|---------------|----------------|--------------|
-| PR Build | ✅ | ❌ | ❌ | ❌ | ❌ |
-| CI | ✅ | ✅ (edge) | ✅ (dev) | ❌ | ❌ |
-| Release-Please | ❌ | ❌ | ❌ | ✅ (on PR merge) | ✅ (on PR merge) |
+| Workflow | Validation | Snapshots | Release PR | Official Release |
+|----------|-----------|-----------|------------|------------------|
+| PR Build | ✅ | ❌ | ❌ | ❌ |
+| CI/CD | ✅ | ✅ (always) | ✅ (always) | ✅ (on PR merge) |
+
+**One workflow to rule them all!** The CI/CD workflow handles everything.
 
 ## Why This Structure?
 
-### Problem: Helm Chart Version Conflicts
-If CI published official Helm chart versions on every push, it would try to push the same version (e.g., 0.1.0) multiple times to the OCI registry, which **rejects duplicate versions**.
+### Previous Problems (4 workflows!)
+- ❌ Duplication between `ci.yml`, `release-please.yml`, and `release.yml`
+- ❌ Confusing separation of concerns
+- ❌ Hard to understand what runs when
 
-### Solution: Snapshot vs Release Publishing
-- **CI workflow**: Publishes snapshot Helm charts with unique versions (e.g., `0.1.0-dev.abc123`)
-- **Release-please workflow**: Publishes official release versions (e.g., `0.1.0`) only when you merge Release PR
+### Solution: Single Consolidated CI/CD Workflow
+- ✅ **One workflow** handles everything for main branch
+- ✅ **Clear phases** within the workflow
+- ✅ **Automatic snapshots** on every push (unique versions)
+- ✅ **Automatic Release PRs** (no manual intervention needed)
+- ✅ **Manual release control** (merge Release PR when ready)
 
 ### Benefits
-- ✅ No version conflicts in OCI registry
-- ✅ Snapshots available immediately for testing
-- ✅ Manual control over official releases
-- ✅ Fast PR validation (amd64 only)
-- ✅ Edge images + snapshot Helm charts for testing latest main
-- ✅ Automated Release PRs with proper versioning
-- ✅ All artifacts in sync (Docker + Helm + YAML)
+- ✅ **Simple**: 2 workflows total (PR + CI/CD)
+- ✅ **No duplication**: Single source of truth
+- ✅ **No version conflicts**: Unique snapshot versions
+- ✅ **Snapshots immediately available**: Test latest changes instantly
+- ✅ **Manual release control**: You decide when to publish
+- ✅ **Secure releases**: Signed images, SBOM, provenance
+- ✅ **All artifacts in sync**: Docker + Helm + YAML
 
 ## Artifact Versioning Strategy
 
