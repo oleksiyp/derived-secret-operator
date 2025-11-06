@@ -19,7 +19,13 @@ A Kubernetes operator that derives secrets deterministically from a master passw
 The operator uses Argon2id KDF to derive secrets from a master password with context-based salting:
 
 ```
-MasterPassword + Context → Argon2id(password, salt=context, t=4, m=64MB) → Base62 → DerivedSecret
+MasterPassword + Context
+        ↓
+Argon2id(password, salt=context, t=4, m=64MB)
+        ↓
+Base62 Encoding
+        ↓
+DerivedSecret
 ```
 
 This ensures deterministic, secure, and unique secrets for each key.
@@ -27,6 +33,16 @@ This ensures deterministic, secure, and unique secrets for each key.
 ## Quick Start
 
 ### Installation
+
+**Using Helm (Recommended):**
+
+```bash
+helm install derived-secret-operator \
+  oci://ghcr.io/oleksiyp/charts/derived-secret-operator \
+  --version 0.1.0
+```
+
+**Using kubectl:**
 
 ```bash
 kubectl apply -f https://github.com/oleksiyp/derived-secret-operator/releases/latest/download/install.yaml

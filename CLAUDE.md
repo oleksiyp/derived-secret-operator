@@ -141,6 +141,48 @@ make manifests
 git commit -m "Regenerate CRDs"
 ```
 
+### Sync Kustomize and Helm
+
+**CRITICAL:** Kustomize manifests and Helm charts must be kept in sync.
+
+When changing RBAC, CRDs, or deployment configs:
+1. Update `config/` directory (kustomize source)
+2. Mirror changes to `charts/derived-secret-operator/`
+3. Test both installation methods
+
+**RBAC Mapping:**
+- `config/rbac/role.yaml` → `charts/.../templates/clusterrole.yaml`
+- `config/rbac/leader_election_role.yaml` → `charts/.../templates/leader-election-role.yaml`
+- `config/rbac/role_binding.yaml` → `charts/.../templates/clusterrolebinding.yaml`
+- `config/rbac/leader_election_role_binding.yaml` → `charts/.../templates/leader-election-rolebinding.yaml`
+
+**CRD Mapping:**
+- `config/crd/bases/*.yaml` → `charts/.../crds/*.yaml`
+
+**Deployment Config:**
+- `config/manager/manager.yaml` → `charts/.../templates/deployment.yaml` + `values.yaml`
+
+**Example workflow:**
+```bash
+# 1. Update kustomize manifests
+vim config/rbac/role.yaml
+
+# 2. Update corresponding Helm template
+vim charts/derived-secret-operator/templates/clusterrole.yaml
+
+# 3. Bump Helm chart version (patch)
+vim charts/derived-secret-operator/Chart.yaml
+
+# 4. Test both installation methods
+make build-installer IMG=test:latest
+kubectl apply -f dist/install.yaml
+
+helm install test charts/derived-secret-operator --dry-run
+
+# 5. Commit with descriptive message
+git commit -m "Add RBAC permission for X resource"
+```
+
 ### Update Helm Chart
 ```bash
 # Modify charts/derived-secret-operator/*
