@@ -1,0 +1,47 @@
+---
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  name: manager-role
+rules:
+- apiGroups:
+  - ""
+  resources:
+  - secrets
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - secrets.oleksiyp.dev
+  resources:
+  - derivedsecrets
+  - masterpasswords
+  verbs:
+  - create
+  - delete
+  - get
+  - list
+  - patch
+  - update
+  - watch
+- apiGroups:
+  - secrets.oleksiyp.dev
+  resources:
+  - derivedsecrets/finalizers
+  - masterpasswords/finalizers
+  verbs:
+  - update
+- apiGroups:
+  - secrets.oleksiyp.dev
+  resources:
+  - derivedsecrets/status
+  - masterpasswords/status
+  verbs:
+  - get
+  - patch
+  - update

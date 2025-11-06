@@ -1,0 +1,18 @@
+apiVersion: v2
+name: derived-secret-operator
+description: Kubernetes operator that derives secrets deterministically from a master password using Argon2id KDF
+type: application
+version: 0.1.0
+appVersion: "0.1.0"
+keywords:
+  - kubernetes
+  - operator
+  - secrets
+  - argon2id
+  - security
+home: https://github.com/oleksiyp/derived-secret-operator
+sources:
+  - https://github.com/oleksiyp/derived-secret-operator
+maintainers:
+  - name: oleksiyp
+    url: https://github.com/oleksiyp

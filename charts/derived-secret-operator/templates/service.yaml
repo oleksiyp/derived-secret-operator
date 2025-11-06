@@ -1,0 +1,17 @@
+{{- if .Values.metrics.enabled }}
+apiVersion: v1
+kind: Service
+metadata:
+  name: {{ include "derived-secret-operator.fullname" . }}-metrics
+  labels:
+    {{- include "derived-secret-operator.labels" . | nindent 4 }}
+spec:
+  type: ClusterIP
+  ports:
+  - name: https
+    port: 8443
+    targetPort: 8443
+    protocol: TCP
+  selector:
+    {{- include "derived-secret-operator.selectorLabels" . | nindent 4 }}
+{{- end }}
