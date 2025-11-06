@@ -25,6 +25,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -343,7 +344,7 @@ spec:
   length: 86
 `, secondMasterPasswordName)
 			cmd = exec.Command("kubectl", "apply", "-f", "-")
-			cmd.Stdin = exec.Command("echo", secondMPYAML).Stdout
+			cmd.Stdin = strings.NewReader(secondMPYAML)
 			_, err = utils.Run(cmd)
 			Expect(err).NotTo(HaveOccurred(), "Failed to create second master password")
 
