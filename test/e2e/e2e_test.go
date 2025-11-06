@@ -25,6 +25,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"strings"
 	"time"
 
 	. "github.com/onsi/ginkgo/v2"
@@ -265,15 +266,138 @@ var _ = Describe("Manager", Ordered, func() {
 
 		// +kubebuilder:scaffold:e2e-webhooks-checks
 
-		// TODO: Customize the e2e test suite with scenarios specific to your project.
-		// Consider applying sample/CR(s) and check their status and/or verifying
-		// the reconciliation by using the metrics, i.e.:
-		// metricsOutput, err := getMetricsOutput()
-		// Expect(err).NotTo(HaveOccurred(), "Failed to retrieve logs from curl pod")
-		// Expect(metricsOutput).To(ContainSubstring(
-		//    fmt.Sprintf(`controller_runtime_reconcile_total{controller="%s",result="success"} 1`,
-		//    strings.ToLower(<Kind>),
-		// ))
+		It("should update derived secret when master password is switched", func() {
+			const testNamespace = "default"
+			const derivedSecretName = "test-password-switch"
+			const firstMasterPasswordName = "mp-first"
+			const secondMasterPasswordName = "mp-second"
+
+			By("creating the first master password")
+			firstMPYAML := fmt.Sprintf(`
+apiVersion: secrets.oleksiyp.dev/v1alpha1
+kind: MasterPassword
+metadata:
+  name: %s
+spec:
+  length: 86
+`, firstMasterPasswordName)
+			cmd := exec.Command("kubectl", "apply", "-f", "-")
+			cmd.Stdin = strings.NewReader(firstMPYAML)
+			_, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create first master password")
+
+			By("waiting for first master password to be ready")
+			verifyFirstMPReady := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "masterpassword", firstMasterPasswordName,
+					"-o", "jsonpath={.status.ready}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("true"))
+			}
+			Eventually(verifyFirstMPReady, 30*time.Second).Should(Succeed())
+
+			By("creating derived secret using first master password")
+			derivedSecretYAML := fmt.Sprintf(`
+apiVersion: secrets.oleksiyp.dev/v1alpha1
+kind: DerivedSecret
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  type: Opaque
+  keys:
+    password:
+      type: password
+      masterPassword: %s
+`, derivedSecretName, testNamespace, firstMasterPasswordName)
+			cmd = exec.Command("kubectl", "apply", "-f", "-")
+			cmd.Stdin = strings.NewReader(derivedSecretYAML)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create derived secret")
+
+			By("waiting for derived secret to be ready")
+			verifyDerivedSecretReady := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "derivedsecret", derivedSecretName,
+					"-n", testNamespace,
+					"-o", "jsonpath={.status.ready}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("true"))
+			}
+			Eventually(verifyDerivedSecretReady, 30*time.Second).Should(Succeed())
+
+			By("getting the initial secret value")
+			cmd = exec.Command("kubectl", "get", "secret", derivedSecretName,
+				"-n", testNamespace,
+				"-o", "jsonpath={.data.password}")
+			firstSecretValue, err := utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to get initial secret value")
+			Expect(firstSecretValue).NotTo(BeEmpty(), "Initial secret value should not be empty")
+
+			By("creating the second master password")
+			secondMPYAML := fmt.Sprintf(`
+apiVersion: secrets.oleksiyp.dev/v1alpha1
+kind: MasterPassword
+metadata:
+  name: %s
+spec:
+  length: 86
+`, secondMasterPasswordName)
+			cmd = exec.Command("kubectl", "apply", "-f", "-")
+			cmd.Stdin = strings.NewReader(secondMPYAML)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to create second master password")
+
+			By("waiting for second master password to be ready")
+			verifySecondMPReady := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "masterpassword", secondMasterPasswordName,
+					"-o", "jsonpath={.status.ready}")
+				output, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(output).To(Equal("true"))
+			}
+			Eventually(verifySecondMPReady, 30*time.Second).Should(Succeed())
+
+			By("updating derived secret to use second master password")
+			updatedDerivedSecretYAML := fmt.Sprintf(`
+apiVersion: secrets.oleksiyp.dev/v1alpha1
+kind: DerivedSecret
+metadata:
+  name: %s
+  namespace: %s
+spec:
+  type: Opaque
+  keys:
+    password:
+      type: password
+      masterPassword: %s
+`, derivedSecretName, testNamespace, secondMasterPasswordName)
+			cmd = exec.Command("kubectl", "apply", "-f", "-")
+			cmd.Stdin = strings.NewReader(updatedDerivedSecretYAML)
+			_, err = utils.Run(cmd)
+			Expect(err).NotTo(HaveOccurred(), "Failed to update derived secret")
+
+			By("waiting for secret value to change")
+			verifySecretChanged := func(g Gomega) {
+				cmd := exec.Command("kubectl", "get", "secret", derivedSecretName,
+					"-n", testNamespace,
+					"-o", "jsonpath={.data.password}")
+				newSecretValue, err := utils.Run(cmd)
+				g.Expect(err).NotTo(HaveOccurred())
+				g.Expect(newSecretValue).NotTo(BeEmpty())
+				g.Expect(newSecretValue).NotTo(Equal(firstSecretValue),
+					"Secret value should have changed after switching master password")
+			}
+			Eventually(verifySecretChanged, 30*time.Second).Should(Succeed())
+
+			By("cleaning up test resources")
+			cmd = exec.Command("kubectl", "delete", "derivedsecret", derivedSecretName, "-n", testNamespace)
+			_, _ = utils.Run(cmd)
+			cmd = exec.Command("kubectl", "delete", "masterpassword", firstMasterPasswordName)
+			_, _ = utils.Run(cmd)
+			cmd = exec.Command("kubectl", "delete", "masterpassword", secondMasterPasswordName)
+			_, _ = utils.Run(cmd)
+		})
 	})
 })
 
