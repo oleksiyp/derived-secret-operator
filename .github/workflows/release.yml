@@ -65,7 +65,7 @@ jobs:
       - name: Update Chart.yaml
         run: |
           sed -i "s/^version: .*/version: ${{ inputs.version }}/" charts/derived-secret-operator/Chart.yaml
-          sed -i "s/^appVersion: .*/appVersion: ${{ inputs.version }}/" charts/derived-secret-operator/Chart.yaml
+          sed -i "s/^appVersion: .*/appVersion: v${{ inputs.version }}/" charts/derived-secret-operator/Chart.yaml
 
       # Build and push Docker images
       - name: Build and push Docker images

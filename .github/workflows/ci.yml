@@ -121,10 +121,11 @@ jobs:
       - name: Package snapshot chart
         run: |
           BASE_VERSION=$(grep '^version:' charts/derived-secret-operator/Chart.yaml | awk '{print $2}')
-          SNAPSHOT_VERSION="${BASE_VERSION}-dev.$(git rev-parse --short HEAD)"
+          SHORT_SHA=$(git rev-parse --short HEAD)
+          SNAPSHOT_VERSION="${BASE_VERSION}-dev.${SHORT_SHA}"
 
           sed -i.bak "s/^version: .*/version: ${SNAPSHOT_VERSION}/" charts/derived-secret-operator/Chart.yaml
-          sed -i.bak "s/^appVersion: .*/appVersion: edge/" charts/derived-secret-operator/Chart.yaml
+          sed -i.bak "s/^appVersion: .*/appVersion: sha-${SHORT_SHA}/" charts/derived-secret-operator/Chart.yaml
 
           helm package charts/derived-secret-operator
           mv charts/derived-secret-operator/Chart.yaml.bak charts/derived-secret-operator/Chart.yaml
