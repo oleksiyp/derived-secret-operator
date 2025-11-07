@@ -92,8 +92,10 @@ func (r *DerivedSecretReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 func (r *DerivedSecretReconciler) reconcileDerivedSecret(ctx context.Context, ds *secretsv1alpha1.DerivedSecret) error {
 	log := logf.FromContext(ctx)
 
-	// Derive all secrets
+	// Derive all secrets and calculate hashes
 	secretData := make(map[string][]byte)
+	keyHashes := make(map[string]int32)
+
 	for keyName, keySpec := range ds.Spec.Keys {
 		masterPasswordName := keySpec.MasterPassword
 		if masterPasswordName == "" {
@@ -116,6 +118,7 @@ func (r *DerivedSecretReconciler) reconcileDerivedSecret(ctx context.Context, ds
 		}
 
 		secretData[keyName] = []byte(derivedValue)
+		keyHashes[keyName] = crypto.CalculatePasswordHash(derivedValue)
 	}
 
 	// Create or update the Kubernetes secret
@@ -150,6 +153,9 @@ func (r *DerivedSecretReconciler) reconcileDerivedSecret(ctx context.Context, ds
 		}
 
 		log.Info("Created derived secret", "secret", ds.Namespace+"/"+secretName)
+
+		// Store key hashes in status after successful secret creation
+		ds.Status.KeyHashes = keyHashes
 		return nil
 	}
 
@@ -187,6 +193,8 @@ func (r *DerivedSecretReconciler) reconcileDerivedSecret(ctx context.Context, ds
 		log.Info("Updated derived secret", "secret", ds.Namespace+"/"+secretName)
 	}
 
+	// Store key hashes in status after successful secret reconciliation
+	ds.Status.KeyHashes = keyHashes
 	return nil
 }
 

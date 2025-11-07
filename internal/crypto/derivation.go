@@ -18,7 +18,9 @@ package crypto
 
 import (
 	"crypto/rand"
+	"crypto/sha256"
 	"encoding/base64"
+	"encoding/binary"
 	"fmt"
 	"math/big"
 
@@ -145,4 +147,14 @@ func GetSecretLength(secretType string, customLength int) int {
 // BuildContext builds the context string for derivation from namespace, name, and key.
 func BuildContext(namespace, name, key string) string {
 	return fmt.Sprintf("%s/%s/%s", namespace, name, key)
+}
+
+// CalculatePasswordHash calculates a hash (0-999) from a password for tracking updates without revealing the password.
+// This is used to detect password changes without exposing sensitive data in the status field.
+func CalculatePasswordHash(password string) int32 {
+	hash := sha256.Sum256([]byte(password))
+	// Use first 4 bytes to get a uint32, then mod 1000 to get 0-999
+	value := binary.BigEndian.Uint32(hash[:4])
+	// #nosec G115 -- value % 1000 is always in range [0, 999], safe to convert to int32
+	return int32(value % 1000)
 }

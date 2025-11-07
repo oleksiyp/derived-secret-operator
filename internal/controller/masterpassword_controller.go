@@ -175,6 +175,19 @@ func (r *MasterPasswordReconciler) updateStatus(ctx context.Context, mp *secrets
 
 	secretName, secretNamespace := r.getSecretNameAndNamespace(mp)
 
+	// Get the secret to calculate password hash
+	secret := &corev1.Secret{}
+	if err := r.Get(ctx, types.NamespacedName{Name: secretName, Namespace: secretNamespace}, secret); err != nil {
+		return fmt.Errorf("failed to get secret for hash calculation: %w", err)
+	}
+
+	// Calculate password hash
+	passwordBytes, ok := secret.Data[masterPasswordKey]
+	if !ok {
+		return fmt.Errorf("secret missing %s key", masterPasswordKey)
+	}
+	passwordHash := crypto.CalculatePasswordHash(string(passwordBytes))
+
 	// Count dependent DerivedSecrets
 	derivedSecrets := &secretsv1alpha1.DerivedSecretList{}
 	if err := r.List(ctx, derivedSecrets); err != nil {
@@ -199,6 +212,7 @@ func (r *MasterPasswordReconciler) updateStatus(ctx context.Context, mp *secrets
 	mp.Status.SecretNamespace = secretNamespace
 	mp.Status.Ready = true
 	mp.Status.DependentSecrets = dependentCount
+	mp.Status.PasswordHash = passwordHash
 
 	r.setCondition(mp, "Ready", metav1.ConditionTrue, "SecretReady", "Master password secret is ready")
 
