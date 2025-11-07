@@ -419,14 +419,7 @@ spec:
 			Expect(err).NotTo(HaveOccurred(), "Failed to create master password")
 
 			By("waiting for master password to be ready")
-			verifyMPReady := func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "masterpassword", masterPasswordName,
-					"-o", "jsonpath={.status.ready}")
-				output, err := utils.Run(cmd)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(output).To(Equal("true"))
-			}
-			Eventually(verifyMPReady, 30*time.Second).Should(Succeed())
+			Eventually(verifyMasterPasswordReady(masterPasswordName), 30*time.Second).Should(Succeed())
 
 			By("creating derived secret")
 			derivedSecretYAML := fmt.Sprintf(`
@@ -526,14 +519,7 @@ spec:
 			Expect(err).NotTo(HaveOccurred(), "Failed to create master password")
 
 			By("waiting for master password to be ready")
-			verifyMPReady := func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "masterpassword", masterPasswordName,
-					"-o", "jsonpath={.status.ready}")
-				output, err := utils.Run(cmd)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(output).To(Equal("true"))
-			}
-			Eventually(verifyMPReady, 30*time.Second).Should(Succeed())
+			Eventually(verifyMasterPasswordReady(masterPasswordName), 30*time.Second).Should(Succeed())
 
 			By("creating derived secret")
 			derivedSecretYAML := fmt.Sprintf(`
@@ -650,14 +636,7 @@ spec:
 			Expect(err).NotTo(HaveOccurred(), "Failed to create master password")
 
 			By("waiting for master password to be ready")
-			verifyMPReady := func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "masterpassword", masterPasswordName,
-					"-o", "jsonpath={.status.ready}")
-				output, err := utils.Run(cmd)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(output).To(Equal("true"))
-			}
-			Eventually(verifyMPReady, 30*time.Second).Should(Succeed())
+			Eventually(verifyMasterPasswordReady(masterPasswordName), 30*time.Second).Should(Succeed())
 
 			By("creating derived secret")
 			derivedSecretYAML := fmt.Sprintf(`
@@ -812,6 +791,18 @@ func getMetricsOutput() (string, error) {
 	By("getting the curl-metrics logs")
 	cmd := exec.Command("kubectl", "logs", "curl-metrics", "-n", namespace)
 	return utils.Run(cmd)
+}
+
+// verifyMasterPasswordReady returns a Gomega assertion function that checks if a MasterPassword is ready.
+// This helper reduces duplication across E2E tests.
+func verifyMasterPasswordReady(name string) func(Gomega) {
+	return func(g Gomega) {
+		cmd := exec.Command("kubectl", "get", "masterpassword", name,
+			"-o", "jsonpath={.status.ready}")
+		output, err := utils.Run(cmd)
+		g.Expect(err).NotTo(HaveOccurred())
+		g.Expect(output).To(Equal("true"))
+	}
 }
 
 // tokenRequest is a simplified representation of the Kubernetes TokenRequest API response,
