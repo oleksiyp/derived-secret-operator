@@ -83,18 +83,18 @@ jobs:
           if ! git diff --cached --quiet; then
             git commit -m "Release v${{ inputs.version }}"
             git push origin "$BRANCH"
+
+            # Create PR with auto-merge enabled (version updates are secondary)
+            gh pr create \
+              --title "Release v${{ inputs.version }}" \
+              --body "Automated version bump for release v${{ inputs.version }}" \
+              --base main \
+              --head "$BRANCH"
+
+            gh pr merge "$BRANCH" --auto --squash
           else
             echo "No changes to commit for version v${{ inputs.version }}."
           fi
-
-          # Create PR with auto-merge enabled (version updates are secondary)
-          gh pr create \
-            --title "Release v${{ inputs.version }}" \
-            --body "Automated version bump for release v${{ inputs.version }}" \
-            --base main \
-            --head "$BRANCH"
-
-          gh pr merge "$BRANCH" --auto --squash
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
