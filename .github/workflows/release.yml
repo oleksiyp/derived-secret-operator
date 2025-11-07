@@ -13,7 +13,6 @@ permissions:
   contents: write
   packages: write
   id-token: write
-  workflows: write
 
 jobs:
   release:
