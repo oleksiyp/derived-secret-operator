@@ -18,8 +18,6 @@ package controller
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/binary"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
@@ -120,11 +118,8 @@ func (r *DerivedSecretReconciler) reconcileDerivedSecret(ctx context.Context, ds
 		}
 
 		secretData[keyName] = []byte(derivedValue)
-		keyHashes[keyName] = calculateHash(derivedValue)
+		keyHashes[keyName] = crypto.CalculatePasswordHash(derivedValue)
 	}
-
-	// Store key hashes in status for tracking updates
-	ds.Status.KeyHashes = keyHashes
 
 	// Create or update the Kubernetes secret
 	secret := &corev1.Secret{}
@@ -158,6 +153,9 @@ func (r *DerivedSecretReconciler) reconcileDerivedSecret(ctx context.Context, ds
 		}
 
 		log.Info("Created derived secret", "secret", ds.Namespace+"/"+secretName)
+
+		// Store key hashes in status after successful secret creation
+		ds.Status.KeyHashes = keyHashes
 		return nil
 	}
 
@@ -195,6 +193,8 @@ func (r *DerivedSecretReconciler) reconcileDerivedSecret(ctx context.Context, ds
 		log.Info("Updated derived secret", "secret", ds.Namespace+"/"+secretName)
 	}
 
+	// Store key hashes in status after successful secret reconciliation
+	ds.Status.KeyHashes = keyHashes
 	return nil
 }
 
@@ -289,14 +289,6 @@ func equalMaps(a, b map[string]string) bool {
 		}
 	}
 	return true
-}
-
-// calculateHash calculates a hash (0-999) from a password for tracking updates without revealing the password
-func calculateHash(password string) int32 {
-	hash := sha256.Sum256([]byte(password))
-	// Use first 4 bytes to get a uint32, then mod 1000 to get 0-999
-	value := binary.BigEndian.Uint32(hash[:4])
-	return int32(value % 1000)
 }
 
 // SetupWithManager sets up the controller with the Manager.
