@@ -146,13 +146,10 @@ jobs:
         run: |
           make build-installer IMG=ghcr.io/${{ github.repository }}:v${{ inputs.version }}
 
-      # Create and push tag on main branch (after PR is submitted)
+      # Create and push tag on the original commit (matches Docker images)
       - name: Create and push tag
         run: |
-          git fetch origin main
-          git checkout main
-          git pull origin main
-          git tag -a "v${{ inputs.version }}" -m "Release v${{ inputs.version }}"
+          git tag -a "v${{ inputs.version }}" -m "Release v${{ inputs.version }}" ${{ github.sha }}
           git push origin "v${{ inputs.version }}"
 
       # Create GitHub Release with automatic PR summary
