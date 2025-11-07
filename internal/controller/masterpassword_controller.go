@@ -244,6 +244,7 @@ func (r *MasterPasswordReconciler) setCondition(
 func (r *MasterPasswordReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&secretsv1alpha1.MasterPassword{}).
+		Owns(&corev1.Secret{}).
 		Named("masterpassword").
 		Complete(r)
 }
