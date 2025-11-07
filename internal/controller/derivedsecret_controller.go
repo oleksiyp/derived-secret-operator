@@ -36,8 +36,6 @@ import (
 )
 
 const (
-	// #nosec G101 -- Not a credential, Kubernetes finalizer name
-	derivedSecretFinalizer    = "secrets.oleksiyp.dev/derivedsecret-finalizer"
 	defaultMasterPasswordName = "default"
 )
 
@@ -50,7 +48,6 @@ type DerivedSecretReconciler struct {
 
 // +kubebuilder:rbac:groups=secrets.oleksiyp.dev,resources=derivedsecrets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=secrets.oleksiyp.dev,resources=derivedsecrets/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=secrets.oleksiyp.dev,resources=derivedsecrets/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=secrets.oleksiyp.dev,resources=masterpasswords,verbs=get;list;watch
 
@@ -69,22 +66,6 @@ func (r *DerivedSecretReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 		}
 		log.Error(err, "Failed to get DerivedSecret")
 		return ctrl.Result{}, err
-	}
-
-	// Check if the DerivedSecret is being deleted
-	if !derivedSecret.DeletionTimestamp.IsZero() {
-		return r.handleDeletion(ctx, derivedSecret)
-	}
-
-	// Add finalizer if it doesn't exist
-	if !controllerutil.ContainsFinalizer(derivedSecret, derivedSecretFinalizer) {
-		controllerutil.AddFinalizer(derivedSecret, derivedSecretFinalizer)
-		if err := r.Update(ctx, derivedSecret); err != nil {
-			log.Error(err, "Failed to add finalizer to DerivedSecret")
-			return ctrl.Result{}, err
-		}
-		// Requeue immediately to continue reconciliation after finalizer is added
-		return ctrl.Result{Requeue: true}, nil
 	}
 
 	// Reconcile the derived secret
@@ -237,46 +218,6 @@ func (r *DerivedSecretReconciler) getMasterPassword(ctx context.Context, name st
 	}
 
 	return string(passwordBytes), nil
-}
-
-// handleDeletion handles the deletion of a DerivedSecret
-func (r *DerivedSecretReconciler) handleDeletion(
-	ctx context.Context,
-	ds *secretsv1alpha1.DerivedSecret,
-) (ctrl.Result, error) {
-	log := logf.FromContext(ctx)
-
-	if !controllerutil.ContainsFinalizer(ds, derivedSecretFinalizer) {
-		return ctrl.Result{}, nil
-	}
-
-	// Delete the associated secret
-	secret := &corev1.Secret{}
-	err := r.Get(ctx, types.NamespacedName{Name: ds.Name, Namespace: ds.Namespace}, secret)
-	if err != nil {
-		if !apierrors.IsNotFound(err) {
-			log.Error(err, "Failed to get secret for deletion")
-			return ctrl.Result{}, err
-		}
-		// Secret already deleted
-	} else {
-		// Delete the secret
-		if err := r.Delete(ctx, secret); err != nil {
-			log.Error(err, "Failed to delete secret")
-			return ctrl.Result{}, err
-		}
-		log.Info("Deleted derived secret", "secret", ds.Namespace+"/"+ds.Name)
-	}
-
-	// Remove finalizer
-	controllerutil.RemoveFinalizer(ds, derivedSecretFinalizer)
-	if err := r.Update(ctx, ds); err != nil {
-		log.Error(err, "Failed to remove finalizer")
-		return ctrl.Result{}, err
-	}
-
-	log.Info("Finalizer removed, DerivedSecret will be deleted")
-	return ctrl.Result{}, nil
 }
 
 // updateStatus updates the DerivedSecret status

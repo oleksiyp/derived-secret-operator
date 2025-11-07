@@ -8,6 +8,7 @@ rules:
 - apiGroups:
   - secrets.oleksiyp.dev
   resources:
+  - derivedsecrets
   - masterpasswords
   verbs:
   - create
@@ -20,39 +21,8 @@ rules:
 - apiGroups:
   - secrets.oleksiyp.dev
   resources:
-  - masterpasswords/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - secrets.oleksiyp.dev
-  resources:
-  - masterpasswords/status
-  verbs:
-  - get
-  - patch
-  - update
-- apiGroups:
-  - secrets.oleksiyp.dev
-  resources:
-  - derivedsecrets
-  verbs:
-  - create
-  - delete
-  - get
-  - list
-  - patch
-  - update
-  - watch
-- apiGroups:
-  - secrets.oleksiyp.dev
-  resources:
-  - derivedsecrets/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - secrets.oleksiyp.dev
-  resources:
   - derivedsecrets/status
+  - masterpasswords/status
   verbs:
   - get
   - patch

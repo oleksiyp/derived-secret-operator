@@ -32,13 +32,6 @@ rules:
 - apiGroups:
   - secrets.oleksiyp.dev
   resources:
-  - derivedsecrets/finalizers
-  - masterpasswords/finalizers
-  verbs:
-  - update
-- apiGroups:
-  - secrets.oleksiyp.dev
-  resources:
   - derivedsecrets/status
   - masterpasswords/status
   verbs:
