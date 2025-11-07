@@ -74,7 +74,7 @@ type MasterPasswordStatus struct {
 
 	// PasswordHash is a hash value (0-999) of the master password to track changes without revealing the password
 	// +optional
-	PasswordHash int `json:"passwordHash,omitempty"`
+	PasswordHash int32 `json:"passwordHash,omitempty"`
 
 	// Conditions represent the current state of the MasterPassword resource.
 	// +listType=map

@@ -92,7 +92,7 @@ type DerivedSecretStatus struct {
 
 	// KeyHashes contains hash values (0-999) for each derived key to track updates without revealing passwords
 	// +optional
-	KeyHashes map[string]int `json:"keyHashes,omitempty"`
+	KeyHashes map[string]int32 `json:"keyHashes,omitempty"`
 
 	// Conditions represent the current state of the DerivedSecret resource.
 	// +listType=map

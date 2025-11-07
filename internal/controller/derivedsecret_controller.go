@@ -96,7 +96,7 @@ func (r *DerivedSecretReconciler) reconcileDerivedSecret(ctx context.Context, ds
 
 	// Derive all secrets and calculate hashes
 	secretData := make(map[string][]byte)
-	keyHashes := make(map[string]int)
+	keyHashes := make(map[string]int32)
 
 	for keyName, keySpec := range ds.Spec.Keys {
 		masterPasswordName := keySpec.MasterPassword
@@ -292,11 +292,11 @@ func equalMaps(a, b map[string]string) bool {
 }
 
 // calculateHash calculates a hash (0-999) from a password for tracking updates without revealing the password
-func calculateHash(password string) int {
+func calculateHash(password string) int32 {
 	hash := sha256.Sum256([]byte(password))
 	// Use first 4 bytes to get a uint32, then mod 1000 to get 0-999
 	value := binary.BigEndian.Uint32(hash[:4])
-	return int(value % 1000)
+	return int32(value % 1000)
 }
 
 // SetupWithManager sets up the controller with the Manager.
