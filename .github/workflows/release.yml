@@ -141,42 +141,42 @@ jobs:
 
       # Create GitHub Release with automatic PR summary
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ inputs.version }}
-          name: v${{ inputs.version }}
-          generate_release_notes: true
-          body: |
-            ## Installation
+        run: |
+          gh release create "v${{ inputs.version }}" \
+            --title "v${{ inputs.version }}" \
+            --notes "$(cat <<'EOF'
+          ## Installation
 
-            ### Using kubectl
-            ```bash
-            kubectl apply -f https://github.com/${{ github.repository }}/releases/download/v${{ inputs.version }}/install.yaml
-            ```
+          ### Using kubectl
+          \`\`\`bash
+          kubectl apply -f https://github.com/${{ github.repository }}/releases/download/v${{ inputs.version }}/install.yaml
+          \`\`\`
 
-            ### Using Helm
-            ```bash
-            helm install derived-secret-operator \
-              oci://ghcr.io/${{ github.repository_owner }}/charts/derived-secret-operator \
-              --version ${{ inputs.version }} \
-              --namespace derived-secret-operator-system \
-              --create-namespace
-            ```
+          ### Using Helm
+          \`\`\`bash
+          helm install derived-secret-operator \
+            oci://ghcr.io/${{ github.repository_owner }}/charts/derived-secret-operator \
+            --version ${{ inputs.version }} \
+            --namespace derived-secret-operator-system \
+            --create-namespace
+          \`\`\`
 
-            ### Using Docker
-            ```bash
-            docker pull ghcr.io/${{ github.repository }}:v${{ inputs.version }}
-            ```
+          ### Using Docker
+          \`\`\`bash
+          docker pull ghcr.io/${{ github.repository }}:v${{ inputs.version }}
+          \`\`\`
 
-            ## Container Images
-            - `ghcr.io/${{ github.repository }}:v${{ inputs.version }}`
-            - `ghcr.io/${{ github.repository }}:latest`
+          ## Container Images
+          - \`ghcr.io/${{ github.repository }}:v${{ inputs.version }}\`
+          - \`ghcr.io/${{ github.repository }}:latest\`
 
-            **Architectures:** linux/amd64, linux/arm64
-            **Signed with:** cosign
-            **SBOM:** Included (SPDX format)
-          files: |
-            dist/install.yaml
+          **Architectures:** linux/amd64, linux/arm64
+          **Signed with:** cosign
+          **SBOM:** Included (SPDX format)
+          EOF
+          )" \
+            --generate-notes \
+            dist/install.yaml \
             sbom.spdx.json
-          draft: false
-          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
