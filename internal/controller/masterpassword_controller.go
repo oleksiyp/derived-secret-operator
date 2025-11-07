@@ -18,6 +18,8 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
@@ -175,6 +177,19 @@ func (r *MasterPasswordReconciler) updateStatus(ctx context.Context, mp *secrets
 
 	secretName, secretNamespace := r.getSecretNameAndNamespace(mp)
 
+	// Get the secret to calculate password hash
+	secret := &corev1.Secret{}
+	if err := r.Get(ctx, types.NamespacedName{Name: secretName, Namespace: secretNamespace}, secret); err != nil {
+		return fmt.Errorf("failed to get secret for hash calculation: %w", err)
+	}
+
+	// Calculate password hash
+	passwordBytes, ok := secret.Data[masterPasswordKey]
+	if !ok {
+		return fmt.Errorf("secret missing %s key", masterPasswordKey)
+	}
+	passwordHash := calculatePasswordHash(string(passwordBytes))
+
 	// Count dependent DerivedSecrets
 	derivedSecrets := &secretsv1alpha1.DerivedSecretList{}
 	if err := r.List(ctx, derivedSecrets); err != nil {
@@ -199,6 +214,7 @@ func (r *MasterPasswordReconciler) updateStatus(ctx context.Context, mp *secrets
 	mp.Status.SecretNamespace = secretNamespace
 	mp.Status.Ready = true
 	mp.Status.DependentSecrets = dependentCount
+	mp.Status.PasswordHash = passwordHash
 
 	r.setCondition(mp, "Ready", metav1.ConditionTrue, "SecretReady", "Master password secret is ready")
 
@@ -279,6 +295,14 @@ func (r *MasterPasswordReconciler) findMasterPasswordsForSecret() handler.EventH
 
 		return requests
 	})
+}
+
+// calculatePasswordHash calculates a hash (0-999) from a password for tracking updates without revealing the password
+func calculatePasswordHash(password string) int {
+	hash := sha256.Sum256([]byte(password))
+	// Use first 4 bytes to get a uint32, then mod 1000 to get 0-999
+	value := binary.BigEndian.Uint32(hash[:4])
+	return int(value % 1000)
 }
 
 // SetupWithManager sets up the controller with the Manager.
