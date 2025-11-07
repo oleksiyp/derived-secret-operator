@@ -80,8 +80,12 @@ jobs:
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git checkout -b "$BRANCH"
           git add charts/derived-secret-operator/Chart.yaml README.md
-          git commit -m "Release v${{ inputs.version }}"
-          git push origin "$BRANCH"
+          if ! git diff --cached --quiet; then
+            git commit -m "Release v${{ inputs.version }}"
+            git push origin "$BRANCH"
+          else
+            echo "No changes to commit for version v${{ inputs.version }}."
+          fi
 
           # Create PR with auto-merge enabled (version updates are secondary)
           gh pr create \
