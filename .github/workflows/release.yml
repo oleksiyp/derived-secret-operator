@@ -1,4 +1,4 @@
-name: Release2
+name: Release
 
 # Manually trigger releases when ready
 on:
@@ -13,7 +13,6 @@ permissions:
   contents: write
   packages: write
   id-token: write
-  workflows: write
 
 jobs:
   release:
@@ -122,6 +121,7 @@ jobs:
       # Create git tag
       - name: Create and push tag
         run: |
+          git reset --hard HEAD
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag -a "v${{ inputs.version }}" -m "Release v${{ inputs.version }}"
