@@ -37,8 +37,8 @@ var _ = Describe("MasterPassword Controller", func() {
 		ctx := context.Background()
 
 		typeNamespacedName := types.NamespacedName{
-			Name:      resourceName,
-			Namespace: "default",
+			Name: resourceName,
+			// MasterPassword is cluster-scoped, no namespace
 		}
 		masterpassword := &secretsv1alpha1.MasterPassword{}
 
@@ -48,8 +48,8 @@ var _ = Describe("MasterPassword Controller", func() {
 			if err != nil && errors.IsNotFound(err) {
 				resource := &secretsv1alpha1.MasterPassword{
 					ObjectMeta: metav1.ObjectMeta{
-						Name:      resourceName,
-						Namespace: "default",
+						Name: resourceName,
+						// MasterPassword is cluster-scoped, no namespace
 					},
 				}
 				Expect(k8sClient.Create(ctx, resource)).To(Succeed())
@@ -67,8 +67,9 @@ var _ = Describe("MasterPassword Controller", func() {
 		It("should successfully reconcile the resource", func() {
 			By("Reconciling the created resource")
 			controllerReconciler := &MasterPasswordReconciler{
-				Client: k8sClient,
-				Scheme: k8sClient.Scheme(),
+				Client:            k8sClient,
+				Scheme:            k8sClient.Scheme(),
+				OperatorNamespace: "default", // Set operator namespace for secret creation
 			}
 
 			_, err := controllerReconciler.Reconcile(ctx, reconcile.Request{
