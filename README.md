@@ -50,11 +50,13 @@ kubectl apply -f https://github.com/oleksiyp/derived-secret-operator/releases/la
 
 ### Create a Master Password
 
+**Note:** If you installed via Helm, a `default` MasterPassword is already created. You can use it directly or create your own with a different name.
+
 ```yaml
 apiVersion: secrets.oleksiyp.dev/v1alpha1
 kind: MasterPassword
 metadata:
-  name: default
+  name: my-app
 spec:
   length: 86
 ```
@@ -71,10 +73,10 @@ spec:
   keys:
     DATABASE_PASSWORD:
       type: password
-      masterPassword: default
+      masterPassword: my-app  # or use "default" if installed via Helm
     ENCRYPTION_KEY:
       type: encryption-key
-      masterPassword: default
+      masterPassword: my-app
 ```
 
 ## Getting Started
