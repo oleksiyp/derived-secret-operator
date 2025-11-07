@@ -61,7 +61,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Update versions in files and commit first
+      # Update versions in files and create PR (async merge)
       - name: Update Chart.yaml
         run: |
           sed -i "s/^version: .*/version: ${{ inputs.version }}/" charts/derived-secret-operator/Chart.yaml
@@ -73,21 +73,32 @@ jobs:
           # Use address range to target only lines 35-50 (Quick Start section)
           sed -i -E '35,50 s|--version [0-9]+\.[0-9]+\.[0-9]+|--version ${{ inputs.version }}|' README.md
 
-      - name: Commit version updates
-        id: commit
+      - name: Create PR for version updates (async)
         run: |
+          BRANCH="release-v${{ inputs.version }}"
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
+          git checkout -b "$BRANCH"
           git add charts/derived-secret-operator/Chart.yaml README.md
           git commit -m "Release v${{ inputs.version }}"
-          git push origin main || { echo "❌ Failed to push to main - another commit may have been pushed. Please re-run the workflow."; exit 1; }
-          echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+          git push origin "$BRANCH"
+
+          # Create PR with auto-merge enabled (version updates are secondary)
+          gh pr create \
+            --title "Release v${{ inputs.version }}" \
+            --body "Automated version bump for release v${{ inputs.version }}" \
+            --base main \
+            --head "$BRANCH"
+
+          gh pr merge "$BRANCH" --auto --squash
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
 
       - name: Get build timestamp
         id: timestamp
         run: echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
 
-      # Build and push Docker images with correct commit SHA
+      # Build and push Docker images (version file updates are secondary)
       - name: Build and push Docker images
         id: build
         uses: docker/build-push-action@v6
@@ -102,10 +113,10 @@ jobs:
             org.opencontainers.image.title=derived-secret-operator
             org.opencontainers.image.version=${{ inputs.version }}
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
-            org.opencontainers.image.revision=${{ steps.commit.outputs.sha }}
+            org.opencontainers.image.revision=${{ github.sha }}
           build-args: |
             VERSION=${{ inputs.version }}
-            COMMIT=${{ steps.commit.outputs.sha }}
+            COMMIT=${{ github.sha }}
             BUILD_DATE=${{ steps.timestamp.outputs.date }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -135,10 +146,13 @@ jobs:
         run: |
           make build-installer IMG=ghcr.io/${{ github.repository }}:v${{ inputs.version }}
 
-      # Create and push tag pointing to the commit with version updates
+      # Create and push tag on main branch (after PR is submitted)
       - name: Create and push tag
         run: |
-          git tag -a "v${{ inputs.version }}" -m "Release v${{ inputs.version }}" ${{ steps.commit.outputs.sha }}
+          git fetch origin main
+          git checkout main
+          git pull origin main
+          git tag -a "v${{ inputs.version }}" -m "Release v${{ inputs.version }}"
           git push origin "v${{ inputs.version }}"
 
       # Create GitHub Release with automatic PR summary
