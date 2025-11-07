@@ -28,7 +28,6 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
-	"sigs.k8s.io/controller-runtime/pkg/controller/controllerutil"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	secretsv1alpha1 "github.com/oleksiyp/derived-secret-operator/api/v1alpha1"
@@ -36,10 +35,8 @@ import (
 )
 
 const (
-	// #nosec G101 -- Not a credential, Kubernetes finalizer name
-	masterPasswordFinalizer = "secrets.oleksiyp.dev/masterpassword-finalizer"
-	masterPasswordKey       = "masterPassword"
-	defaultLength           = 86
+	masterPasswordKey = "masterPassword"
+	defaultLength     = 86
 )
 
 // MasterPasswordReconciler reconciles a MasterPassword object
@@ -51,7 +48,6 @@ type MasterPasswordReconciler struct {
 
 // +kubebuilder:rbac:groups=secrets.oleksiyp.dev,resources=masterpasswords,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=secrets.oleksiyp.dev,resources=masterpasswords/status,verbs=get;update;patch
-// +kubebuilder:rbac:groups=secrets.oleksiyp.dev,resources=masterpasswords/finalizers,verbs=update
 // +kubebuilder:rbac:groups="",resources=secrets,verbs=get;list;watch;create;update;patch;delete
 // +kubebuilder:rbac:groups=secrets.oleksiyp.dev,resources=derivedsecrets,verbs=get;list;watch
 
@@ -70,22 +66,6 @@ func (r *MasterPasswordReconciler) Reconcile(ctx context.Context, req ctrl.Reque
 		}
 		log.Error(err, "Failed to get MasterPassword")
 		return ctrl.Result{}, err
-	}
-
-	// Check if the MasterPassword is being deleted
-	if !masterPassword.DeletionTimestamp.IsZero() {
-		return r.handleDeletion(ctx, masterPassword)
-	}
-
-	// Add finalizer if it doesn't exist
-	if !controllerutil.ContainsFinalizer(masterPassword, masterPasswordFinalizer) {
-		controllerutil.AddFinalizer(masterPassword, masterPasswordFinalizer)
-		if err := r.Update(ctx, masterPassword); err != nil {
-			log.Error(err, "Failed to add finalizer to MasterPassword")
-			return ctrl.Result{}, err
-		}
-		// Requeue immediately to continue reconciliation after finalizer is added
-		return ctrl.Result{Requeue: true}, nil
 	}
 
 	// Reconcile the secret
@@ -186,59 +166,6 @@ func (r *MasterPasswordReconciler) reconcileSecret(ctx context.Context, mp *secr
 	}
 
 	return nil
-}
-
-// handleDeletion handles the deletion of a MasterPassword
-func (r *MasterPasswordReconciler) handleDeletion(
-	ctx context.Context,
-	mp *secretsv1alpha1.MasterPassword,
-) (ctrl.Result, error) {
-	log := logf.FromContext(ctx)
-
-	if !controllerutil.ContainsFinalizer(mp, masterPasswordFinalizer) {
-		return ctrl.Result{}, nil
-	}
-
-	// Check if any DerivedSecrets are using this MasterPassword
-	derivedSecrets := &secretsv1alpha1.DerivedSecretList{}
-	if err := r.List(ctx, derivedSecrets); err != nil {
-		log.Error(err, "Failed to list DerivedSecrets")
-		return ctrl.Result{}, err
-	}
-
-	dependentCount := 0
-	for _, ds := range derivedSecrets.Items {
-		for _, keySpec := range ds.Spec.Keys {
-			mpName := keySpec.MasterPassword
-			if mpName == "" {
-				mpName = "default"
-			}
-			if mpName == mp.Name {
-				dependentCount++
-				break
-			}
-		}
-	}
-
-	if dependentCount > 0 {
-		msg := fmt.Sprintf("MasterPassword is still in use by %d DerivedSecret(s)", dependentCount)
-		log.Info("Cannot delete MasterPassword - still in use by DerivedSecrets", "dependentCount", dependentCount)
-		r.setCondition(mp, "Ready", metav1.ConditionFalse, "DeletionBlocked", msg)
-		if err := r.Status().Update(ctx, mp); err != nil {
-			log.Error(err, "Failed to update status")
-		}
-		return ctrl.Result{}, fmt.Errorf("%s", msg)
-	}
-
-	// Remove finalizer
-	controllerutil.RemoveFinalizer(mp, masterPasswordFinalizer)
-	if err := r.Update(ctx, mp); err != nil {
-		log.Error(err, "Failed to remove finalizer")
-		return ctrl.Result{}, err
-	}
-
-	log.Info("Finalizer removed, MasterPassword will be deleted")
-	return ctrl.Result{}, nil
 }
 
 // updateStatus updates the MasterPassword status

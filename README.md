@@ -48,13 +48,33 @@ helm install derived-secret-operator \
 kubectl apply -f https://github.com/oleksiyp/derived-secret-operator/releases/latest/download/install.yaml
 ```
 
+**Using Helmfile:**
+
+```yaml
+# helmfile.yaml
+repositories: []
+
+releases:
+  - name: derived-secret-operator
+    chart: oci://ghcr.io/oleksiyp/charts/derived-secret-operator
+    version: 0.1.0
+    namespace: derived-secret-operator-system
+    createNamespace: true
+```
+
+```bash
+helmfile sync
+```
+
 ### Create a Master Password
+
+**Note:** If you installed via Helm, a `default` MasterPassword is already created. You can use it directly or create your own with a different name.
 
 ```yaml
 apiVersion: secrets.oleksiyp.dev/v1alpha1
 kind: MasterPassword
 metadata:
-  name: default
+  name: my-app
 spec:
   length: 86
 ```
@@ -71,10 +91,10 @@ spec:
   keys:
     DATABASE_PASSWORD:
       type: password
-      masterPassword: default
+      masterPassword: my-app
     ENCRYPTION_KEY:
       type: encryption-key
-      masterPassword: default
+      masterPassword: my-app
 ```
 
 ## Getting Started
