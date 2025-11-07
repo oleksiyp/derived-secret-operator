@@ -61,17 +61,33 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Update versions in files
+      # Update versions in files and commit first
       - name: Update Chart.yaml
         run: |
           sed -i "s/^version: .*/version: ${{ inputs.version }}/" charts/derived-secret-operator/Chart.yaml
           sed -i "s/^appVersion: .*/appVersion: v${{ inputs.version }}/" charts/derived-secret-operator/Chart.yaml
 
+      - name: Update README.md
+        run: |
+          # Only update the Quick Start installation section (line ~42)
+          # Use address range to target only lines 35-50 (Quick Start section)
+          sed -i -E '35,50 s|--version [0-9]+\.[0-9]+\.[0-9]+|--version ${{ inputs.version }}|' README.md
+
+      - name: Commit version updates
+        id: commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add charts/derived-secret-operator/Chart.yaml README.md
+          git commit -m "Release v${{ inputs.version }}"
+          git push origin main || { echo "❌ Failed to push to main - another commit may have been pushed. Please re-run the workflow."; exit 1; }
+          echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
       - name: Get build timestamp
         id: timestamp
         run: echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
 
-      # Build and push Docker images
+      # Build and push Docker images with correct commit SHA
       - name: Build and push Docker images
         id: build
         uses: docker/build-push-action@v6
@@ -86,9 +102,10 @@ jobs:
             org.opencontainers.image.title=derived-secret-operator
             org.opencontainers.image.version=${{ inputs.version }}
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.commit.outputs.sha }}
           build-args: |
             VERSION=${{ inputs.version }}
-            COMMIT=${{ github.sha }}
+            COMMIT=${{ steps.commit.outputs.sha }}
             BUILD_DATE=${{ steps.timestamp.outputs.date }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -118,53 +135,50 @@ jobs:
         run: |
           make build-installer IMG=ghcr.io/${{ github.repository }}:v${{ inputs.version }}
 
-      # Create git tag
+      # Create and push tag pointing to the commit with version updates
       - name: Create and push tag
         run: |
-          git checkout -- .github/workflows/*
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "v${{ inputs.version }}" -m "Release v${{ inputs.version }}"
+          git tag -a "v${{ inputs.version }}" -m "Release v${{ inputs.version }}" ${{ steps.commit.outputs.sha }}
           git push origin "v${{ inputs.version }}"
 
       # Create GitHub Release with automatic PR summary
       - name: Create GitHub Release
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ inputs.version }}
-          name: v${{ inputs.version }}
-          generate_release_notes: true
-          body: |
-            ## Installation
+        run: |
+          gh release create "v${{ inputs.version }}" \
+            --title "v${{ inputs.version }}" \
+            --notes "$(cat <<'EOF'
+          ## Installation
 
-            ### Using kubectl
-            ```bash
-            kubectl apply -f https://github.com/${{ github.repository }}/releases/download/v${{ inputs.version }}/install.yaml
-            ```
+          ### Using kubectl
+          ```bash
+          kubectl apply -f https://github.com/${{ github.repository }}/releases/download/v${{ inputs.version }}/install.yaml
+          ```
 
-            ### Using Helm
-            ```bash
-            helm install derived-secret-operator \
-              oci://ghcr.io/${{ github.repository_owner }}/charts/derived-secret-operator \
-              --version ${{ inputs.version }} \
-              --namespace derived-secret-operator-system \
-              --create-namespace
-            ```
+          ### Using Helm
+          ```bash
+          helm install derived-secret-operator \
+            oci://ghcr.io/${{ github.repository_owner }}/charts/derived-secret-operator \
+            --version ${{ inputs.version }} \
+            --namespace derived-secret-operator-system \
+            --create-namespace
+          ```
 
-            ### Using Docker
-            ```bash
-            docker pull ghcr.io/${{ github.repository }}:v${{ inputs.version }}
-            ```
+          ### Using Docker
+          ```bash
+          docker pull ghcr.io/${{ github.repository }}:v${{ inputs.version }}
+          ```
 
-            ## Container Images
-            - `ghcr.io/${{ github.repository }}:v${{ inputs.version }}`
-            - `ghcr.io/${{ github.repository }}:latest`
+          ## Container Images
+          - `ghcr.io/${{ github.repository }}:v${{ inputs.version }}`
+          - `ghcr.io/${{ github.repository }}:latest`
 
-            **Architectures:** linux/amd64, linux/arm64
-            **Signed with:** cosign
-            **SBOM:** Included (SPDX format)
-          files: |
-            dist/install.yaml
+          **Architectures:** linux/amd64, linux/arm64
+          **Signed with:** cosign
+          **SBOM:** Included (SPDX format)
+          EOF
+          )" \
+            --generate-notes \
+            dist/install.yaml \
             sbom.spdx.json
-          draft: false
-          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
