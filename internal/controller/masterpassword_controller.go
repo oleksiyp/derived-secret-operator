@@ -267,10 +267,10 @@ func (r *MasterPasswordReconciler) findMasterPasswordsForSecret() handler.EventH
 		for _, mp := range mpList.Items {
 			secretName, secretNamespace := r.getSecretNameAndNamespace(&mp)
 			if secret.Name == secretName && secret.Namespace == secretNamespace {
-				// Only trigger reconcile if:
+				// Trigger reconcile if:
 				// 1. Secret has our label (create/update/delete of managed secret)
-				// 2. OR secret name matches the expected pattern (catch deletion events)
-				if isManagedByUs || secret.Name == mp.Name+"-mp" {
+				// 2. OR secret name matches (covers custom names and deletion events)
+				if isManagedByUs || secret.Name == secretName {
 					requests = append(requests, ctrl.Request{
 						NamespacedName: types.NamespacedName{
 							Name: mp.Name,
