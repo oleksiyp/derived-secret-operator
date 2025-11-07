@@ -39,7 +39,7 @@ This ensures deterministic, secure, and unique secrets for each key.
 ```bash
 helm install derived-secret-operator \
   oci://ghcr.io/oleksiyp/charts/derived-secret-operator \
-  --version 0.1.0
+  --version 0.1.5
 ```
 
 **Using kubectl:**
