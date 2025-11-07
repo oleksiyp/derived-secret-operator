@@ -134,6 +134,7 @@ jobs:
 
       - name: Create and push tag
         run: |
+          git checkout -- .github/workflows/*
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag -a "v${{ inputs.version }}" -m "Release v${{ inputs.version }}"
