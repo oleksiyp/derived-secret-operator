@@ -28,6 +28,7 @@ import (
 	"k8s.io/apimachinery/pkg/types"
 	ctrl "sigs.k8s.io/controller-runtime"
 	"sigs.k8s.io/controller-runtime/pkg/client"
+	"sigs.k8s.io/controller-runtime/pkg/handler"
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 
 	secretsv1alpha1 "github.com/oleksiyp/derived-secret-operator/api/v1alpha1"
@@ -239,11 +240,55 @@ func (r *MasterPasswordReconciler) setCondition(
 	meta.SetStatusCondition(&mp.Status.Conditions, condition)
 }
 
+// findMasterPasswordsForSecret returns an event handler that maps Secret events to MasterPassword reconcile requests
+func (r *MasterPasswordReconciler) findMasterPasswordsForSecret() handler.EventHandler {
+	return handler.EnqueueRequestsFromMapFunc(func(ctx context.Context, obj client.Object) []ctrl.Request {
+		secret, ok := obj.(*corev1.Secret)
+		if !ok {
+			return nil
+		}
+
+		// Only watch secrets in the operator namespace
+		if secret.Namespace != r.OperatorNamespace {
+			return nil
+		}
+
+		// If the secret has our label, it's definitely managed by us
+		// If not, still check if it matches any MasterPassword (for deletion events where labels may be gone)
+		isManagedByUs := secret.Labels != nil && secret.Labels["app.kubernetes.io/managed-by"] == "derived-secret-operator"
+
+		// List all MasterPasswords to find which one corresponds to this secret
+		mpList := &secretsv1alpha1.MasterPasswordList{}
+		if err := r.List(ctx, mpList); err != nil {
+			return nil
+		}
+
+		var requests []ctrl.Request
+		for _, mp := range mpList.Items {
+			secretName, secretNamespace := r.getSecretNameAndNamespace(&mp)
+			if secret.Name == secretName && secret.Namespace == secretNamespace {
+				// Only trigger reconcile if:
+				// 1. Secret has our label (create/update/delete of managed secret)
+				// 2. OR secret name matches the expected pattern (catch deletion events)
+				if isManagedByUs || secret.Name == mp.Name+"-mp" {
+					requests = append(requests, ctrl.Request{
+						NamespacedName: types.NamespacedName{
+							Name: mp.Name,
+						},
+					})
+				}
+			}
+		}
+
+		return requests
+	})
+}
+
 // SetupWithManager sets up the controller with the Manager.
 func (r *MasterPasswordReconciler) SetupWithManager(mgr ctrl.Manager) error {
 	return ctrl.NewControllerManagedBy(mgr).
 		For(&secretsv1alpha1.MasterPassword{}).
-		Owns(&corev1.Secret{}).
+		Watches(&corev1.Secret{}, r.findMasterPasswordsForSecret()).
 		Named("masterpassword").
 		Complete(r)
 }
