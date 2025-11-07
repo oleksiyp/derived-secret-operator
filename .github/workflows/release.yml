@@ -152,27 +152,27 @@ jobs:
           ## Installation
 
           ### Using kubectl
-          \`\`\`bash
+          ```bash
           kubectl apply -f https://github.com/${{ github.repository }}/releases/download/v${{ inputs.version }}/install.yaml
-          \`\`\`
+          ```
 
           ### Using Helm
-          \`\`\`bash
+          ```bash
           helm install derived-secret-operator \
             oci://ghcr.io/${{ github.repository_owner }}/charts/derived-secret-operator \
             --version ${{ inputs.version }} \
             --namespace derived-secret-operator-system \
             --create-namespace
-          \`\`\`
+          ```
 
           ### Using Docker
-          \`\`\`bash
+          ```bash
           docker pull ghcr.io/${{ github.repository }}:v${{ inputs.version }}
-          \`\`\`
+          ```
 
           ## Container Images
-          - \`ghcr.io/${{ github.repository }}:v${{ inputs.version }}\`
-          - \`ghcr.io/${{ github.repository }}:latest\`
+          - `ghcr.io/${{ github.repository }}:v${{ inputs.version }}`
+          - `ghcr.io/${{ github.repository }}:latest`
 
           **Architectures:** linux/amd64, linux/arm64
           **Signed with:** cosign
