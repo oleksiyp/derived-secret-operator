@@ -253,9 +253,10 @@ func (r *MasterPasswordReconciler) findMasterPasswordsForSecret() handler.EventH
 			return nil
 		}
 
-		// If the secret has our label, it's definitely managed by us
-		// If not, still check if it matches any MasterPassword (for deletion events where labels may be gone)
-		isManagedByUs := secret.Labels != nil && secret.Labels["app.kubernetes.io/managed-by"] == "derived-secret-operator"
+		// Only process secrets managed by this operator
+		if secret.Labels == nil || secret.Labels["app.kubernetes.io/managed-by"] != "derived-secret-operator" {
+			return nil
+		}
 
 		// List all MasterPasswords to find which one corresponds to this secret
 		mpList := &secretsv1alpha1.MasterPasswordList{}
@@ -267,8 +268,7 @@ func (r *MasterPasswordReconciler) findMasterPasswordsForSecret() handler.EventH
 		for _, mp := range mpList.Items {
 			secretName, secretNamespace := r.getSecretNameAndNamespace(&mp)
 			// Trigger reconcile if secret name/namespace matches this MasterPassword
-			// We check the label to avoid false positives from unrelated secrets
-			if secret.Name == secretName && secret.Namespace == secretNamespace && isManagedByUs {
+			if secret.Name == secretName && secret.Namespace == secretNamespace {
 				requests = append(requests, ctrl.Request{
 					NamespacedName: types.NamespacedName{
 						Name: mp.Name,
