@@ -62,7 +62,7 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # Update versions in files
+      # Update versions in files and commit first
       - name: Update Chart.yaml
         run: |
           sed -i "s/^version: .*/version: ${{ inputs.version }}/" charts/derived-secret-operator/Chart.yaml
@@ -74,11 +74,21 @@ jobs:
           # Use address range to target only lines 35-50 (Quick Start section)
           sed -i '35,50 s|--version [0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*|--version ${{ inputs.version }}|' README.md
 
+      - name: Commit version updates
+        id: commit
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add charts/derived-secret-operator/Chart.yaml README.md
+          git commit -m "Release v${{ inputs.version }}"
+          git push origin main
+          echo "sha=$(git rev-parse HEAD)" >> $GITHUB_OUTPUT
+
       - name: Get build timestamp
         id: timestamp
         run: echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
 
-      # Build and push Docker images
+      # Build and push Docker images with correct commit SHA
       - name: Build and push Docker images
         id: build
         uses: docker/build-push-action@v6
@@ -93,9 +103,10 @@ jobs:
             org.opencontainers.image.title=derived-secret-operator
             org.opencontainers.image.version=${{ inputs.version }}
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
+            org.opencontainers.image.revision=${{ steps.commit.outputs.sha }}
           build-args: |
             VERSION=${{ inputs.version }}
-            COMMIT=${{ github.sha }}
+            COMMIT=${{ steps.commit.outputs.sha }}
             BUILD_DATE=${{ steps.timestamp.outputs.date }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
@@ -125,21 +136,12 @@ jobs:
         run: |
           make build-installer IMG=ghcr.io/${{ github.repository }}:v${{ inputs.version }}
 
-      # Commit version updates and create git tag
-      - name: Commit version updates
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add charts/derived-secret-operator/Chart.yaml README.md
-          git commit -m "Release v${{ inputs.version }}" || echo "No changes to commit"
-          git push origin main || echo "No changes to push"
-
+      # Create and push tag pointing to the commit with version updates
       - name: Create and push tag
         run: |
-          git checkout -- .github/workflows/*
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -a "v${{ inputs.version }}" -m "Release v${{ inputs.version }}"
+          git tag -a "v${{ inputs.version }}" -m "Release v${{ inputs.version }}" ${{ steps.commit.outputs.sha }}
           git push origin "v${{ inputs.version }}"
 
       # Create GitHub Release with automatic PR summary
