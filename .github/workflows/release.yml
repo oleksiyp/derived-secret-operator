@@ -161,6 +161,7 @@ jobs:
         run: |
           gh release create "v${{ inputs.version }}" \
             --title "v${{ inputs.version }}" \
+            --generate-notes \
             --notes "$(cat <<'EOF'
           ## Installation
 
@@ -192,7 +193,6 @@ jobs:
           **SBOM:** Included (SPDX format)
           EOF
           )" \
-            --generate-notes \
             dist/install.yaml \
             sbom.spdx.json
         env:
