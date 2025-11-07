@@ -18,6 +18,8 @@ package controller
 
 import (
 	"context"
+	"crypto/sha256"
+	"encoding/binary"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
@@ -92,8 +94,10 @@ func (r *DerivedSecretReconciler) Reconcile(ctx context.Context, req ctrl.Reques
 func (r *DerivedSecretReconciler) reconcileDerivedSecret(ctx context.Context, ds *secretsv1alpha1.DerivedSecret) error {
 	log := logf.FromContext(ctx)
 
-	// Derive all secrets
+	// Derive all secrets and calculate hashes
 	secretData := make(map[string][]byte)
+	keyHashes := make(map[string]int)
+
 	for keyName, keySpec := range ds.Spec.Keys {
 		masterPasswordName := keySpec.MasterPassword
 		if masterPasswordName == "" {
@@ -116,7 +120,11 @@ func (r *DerivedSecretReconciler) reconcileDerivedSecret(ctx context.Context, ds
 		}
 
 		secretData[keyName] = []byte(derivedValue)
+		keyHashes[keyName] = calculateHash(derivedValue)
 	}
+
+	// Store key hashes in status for tracking updates
+	ds.Status.KeyHashes = keyHashes
 
 	// Create or update the Kubernetes secret
 	secret := &corev1.Secret{}
@@ -281,6 +289,14 @@ func equalMaps(a, b map[string]string) bool {
 		}
 	}
 	return true
+}
+
+// calculateHash calculates a hash (0-999) from a password for tracking updates without revealing the password
+func calculateHash(password string) int {
+	hash := sha256.Sum256([]byte(password))
+	// Use first 4 bytes to get a uint32, then mod 1000 to get 0-999
+	value := binary.BigEndian.Uint32(hash[:4])
+	return int(value % 1000)
 }
 
 // SetupWithManager sets up the controller with the Manager.
