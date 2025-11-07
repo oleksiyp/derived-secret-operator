@@ -70,7 +70,9 @@ jobs:
 
       - name: Update README.md
         run: |
-          sed -i "s|--version [0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*|--version ${{ inputs.version }}|g" README.md
+          # Only update the Quick Start installation section (line ~42)
+          # Use address range to target only lines 35-50 (Quick Start section)
+          sed -i '35,50 s|--version [0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*|--version ${{ inputs.version }}|' README.md
 
       - name: Get build timestamp
         id: timestamp
