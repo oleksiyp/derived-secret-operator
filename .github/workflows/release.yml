@@ -171,19 +171,11 @@ jobs:
           kubectl apply -f https://github.com/${{ github.repository }}/releases/download/v${{ inputs.version }}/install.yaml
           ```
 
-          ### Using Helm (OCI Registry)
+          ### Using Helm
           ```bash
           helm install derived-secret-operator \
             oci://ghcr.io/${{ github.repository_owner }}/charts/derived-secret-operator \
             --version ${{ inputs.version }} \
-            --namespace derived-secret-operator-system \
-            --create-namespace
-          ```
-
-          ### Using Helm (Chart Archive)
-          ```bash
-          helm install derived-secret-operator \
-            https://github.com/${{ github.repository }}/releases/download/v${{ inputs.version }}/derived-secret-operator-${{ inputs.version }}.tgz \
             --namespace derived-secret-operator-system \
             --create-namespace
           ```
@@ -213,7 +205,6 @@ jobs:
           EOF
           )" \
             dist/install.yaml \
-            derived-secret-operator-${{ inputs.version }}.tgz \
             sbom.spdx.json
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
