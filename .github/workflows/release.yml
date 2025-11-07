@@ -68,6 +68,10 @@ jobs:
           sed -i "s/^version: .*/version: ${{ inputs.version }}/" charts/derived-secret-operator/Chart.yaml
           sed -i "s/^appVersion: .*/appVersion: v${{ inputs.version }}/" charts/derived-secret-operator/Chart.yaml
 
+      - name: Update README.md
+        run: |
+          sed -i "s|--version [0-9][0-9]*\.[0-9][0-9]*\.[0-9][0-9]*|--version ${{ inputs.version }}|g" README.md
+
       - name: Get build timestamp
         id: timestamp
         run: echo "date=$(date -u +%Y-%m-%dT%H:%M:%SZ)" >> $GITHUB_OUTPUT
@@ -119,7 +123,15 @@ jobs:
         run: |
           make build-installer IMG=ghcr.io/${{ github.repository }}:v${{ inputs.version }}
 
-      # Create git tag
+      # Commit version updates and create git tag
+      - name: Commit version updates
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add charts/derived-secret-operator/Chart.yaml README.md
+          git commit -m "Release v${{ inputs.version }}" || echo "No changes to commit"
+          git push origin main || echo "No changes to push"
+
       - name: Create and push tag
         run: |
           git config user.name "github-actions[bot]"
