@@ -18,8 +18,6 @@ package controller
 
 import (
 	"context"
-	"crypto/sha256"
-	"encoding/binary"
 	"fmt"
 
 	corev1 "k8s.io/api/core/v1"
@@ -188,7 +186,7 @@ func (r *MasterPasswordReconciler) updateStatus(ctx context.Context, mp *secrets
 	if !ok {
 		return fmt.Errorf("secret missing %s key", masterPasswordKey)
 	}
-	passwordHash := calculatePasswordHash(string(passwordBytes))
+	passwordHash := crypto.CalculatePasswordHash(string(passwordBytes))
 
 	// Count dependent DerivedSecrets
 	derivedSecrets := &secretsv1alpha1.DerivedSecretList{}
@@ -295,14 +293,6 @@ func (r *MasterPasswordReconciler) findMasterPasswordsForSecret() handler.EventH
 
 		return requests
 	})
-}
-
-// calculatePasswordHash calculates a hash (0-999) from a password for tracking updates without revealing the password
-func calculatePasswordHash(password string) int32 {
-	hash := sha256.Sum256([]byte(password))
-	// Use first 4 bytes to get a uint32, then mod 1000 to get 0-999
-	value := binary.BigEndian.Uint32(hash[:4])
-	return int32(value % 1000)
 }
 
 // SetupWithManager sets up the controller with the Manager.
